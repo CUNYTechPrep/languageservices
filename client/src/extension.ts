@@ -76,7 +76,6 @@ export function activate(context: ExtensionContext) {
 					range:selection,
 					text:text
 				});
-
 				if(response.success && response.comment){
 					console.log(response)
 					await editor.edit(editBuilder => {

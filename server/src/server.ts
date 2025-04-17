@@ -22,7 +22,7 @@ import {
 import {
 	TextDocument
 } from 'vscode-languageserver-textdocument';
-const OPENROUTER_KEY = process.env.OPENROUTER_KEY;
+const OPENROUTER_KEY = process.env.OPENROUTER_KEY;;
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
 const connection = createConnection(ProposedFeatures.all);
@@ -74,7 +74,8 @@ connection.onInitialize((params: InitializeParams) => {
 	return result;
 });
 
-connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, range: any, prompt: string})=>{
+connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, range: any, text: string})=>{
+	console.log(params.text);
 	const doc = documents.get(params.uri)
 	if(!doc){
 		return {success: false, error: 'Document not found'}
@@ -83,7 +84,7 @@ connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, 
 		const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
 			method: "POST",
 			headers:{
-				"Authorization": "Bearer "+key,
+				"Authorization": "Bearer "+OPENROUTER_KEY,
 				"Content-Type": "application/json"
 			},
 			body: JSON.stringify({
@@ -91,15 +92,23 @@ connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, 
 				"messages": [
 					{
 						"role": "user",
-						"content": `${params.prompt}\nAnswer consisely as a code comment for yaml. Answer as short as possible, do not repeat prompt or say if you have any question` // Send prompt and data from YAML` // Send prompt and data from YAML
+						"content": `${params.text}\nAnswer consisely as a code comment for yaml. Answer as short as possible, do not repeat prompt or say if you have any question` // Send prompt and data from YAML` // Send prompt and data from YAML
 					}
 				]
 			})
 		});
-		const result = await response.json()
-		connection.console.log("LLM Prompt:" + `${params.prompt}\nAnswer consisely as a code comment for yaml. Answer as short as possible, do not repeat prompt or say if you have any question`)
+		interface OpenAIResponse {
+						choices: {
+						  message: {
+							role: string;
+							content: string;
+						  };
+						}[];
+					  }
+		const result = await response.json() as OpenAIResponse
+		connection.console.log("LLM Prompt:" + `${params.text}\nAnswer consisely as a code comment for yaml. Answer as short as possible, do not repeat prompt or say if you have any question`)
 		connection.console.log("LLM Response:"+ JSON.stringify(result, null, 2)); 
-		const feedback = "No response from LLM";
+		const feedback = result.choices[0].message.content;
 
 		const cleanFeedback = feedback.replace(/\n/g, ' ').trim();
 
@@ -310,71 +319,71 @@ connection.onCompletionResolve(
 	}
 );
 
-let timeout: NodeJS.Timeout;
-documents.onDidChangeContent(change => {
-	clearTimeout(timeout);
-	timeout = setTimeout(() =>{
-		const text = change.document.getText(); // Get the YAML text
-		if (!text.trim().endsWith("# send-to-llm")) {
-			connection.console.log("No '# send-to-llm' trigger found at end. Skipping.");
-			return;
-		}
-		try {
-			const llmPrompt = `
-				Convert the following prompts into a YAML format that uses a pseudo code that you can interpret precisely.
-				Evaluate the YAML and write any improvements and extensions.
-				Revise the original YAML to include all the improvements and extension you suggested with comments.
-				Extract all the keywords used in the YAML specification and list them, explaining how each is to be used.
-				Return the revised YAML only.
-				`.trim();
-				//Key words should soon be returned as well, probably in a list or tuple format. These can be used to to replace the existing ones
-			sendToLLM(llmPrompt,text);
-		} catch (error) {
-			connection.console.error("Error parsing YAML:" + error);
-		}
-	},3000);//if user doesnt type for three seconds, then itll send
+// let timeout: NodeJS.Timeout;
+// documents.onDidChangeContent(change => {
+// 	clearTimeout(timeout);
+// 	timeout = setTimeout(() =>{
+// 		const text = change.document.getText(); // Get the YAML text
+// 		if (!text.trim().endsWith("# send-to-llm")) {
+// 			connection.console.log("No '# send-to-llm' trigger found at end. Skipping.");
+// 			return;
+// 		}
+// 		try {
+// 			const llmPrompt = `
+// 				Convert the following prompts into a YAML format that uses a pseudo code that you can interpret precisely.
+// 				Evaluate the YAML and write any improvements and extensions.
+// 				Revise the original YAML to include all the improvements and extension you suggested with comments.
+// 				Extract all the keywords used in the YAML specification and list them, explaining how each is to be used.
+// 				Return the revised YAML only.
+// 				`.trim();
+// 				//Key words should soon be returned as well, probably in a list or tuple format. These can be used to to replace the existing ones
+// 			sendToLLM(llmPrompt,text);
+// 		} catch (error) {
+// 			connection.console.error("Error parsing YAML:" + error);
+// 		}
+// 	},3000);//if user doesnt type for three seconds, then itll send
     
-});
+// });
 
-async function sendToLLM(prompt: string, data: string) {
-    try {
+// async function sendToLLM(prompt: string, data: string) {
+//     try {
 		
-        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "Authorization": "Bearer "+OPENROUTER_KEY,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                "model": "deepseek/deepseek-chat-v3-0324:free", // Model 
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": `${prompt}\n${data} answer as short as possible, do not repeat prompt or say if you have any question` // Send prompt and data from YAML
-                    }
-                ]
-            })
-        });
+//         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+//             method: "POST",
+//             headers: {
+//                 "Authorization": "Bearer "+OPENROUTER_KEY,
+//                 "Content-Type": "application/json"
+//             },
+//             body: JSON.stringify({
+//                 "model": "deepseek/deepseek-chat-v3-0324:free", // Model 
+//                 "messages": [
+//                     {
+//                         "role": "user",
+//                         "content": `${prompt}\n${data} answer as short as possible, do not repeat prompt or say if you have any question` // Send prompt and data from YAML
+//                     }
+//                 ]
+//             })
+//         });
 
-        // Handle the response from the LLM
+//         // Handle the response from the LLM
 		
-		interface OpenAIResponse {
-			choices: {
-			  message: {
-				role: string;
-				content: string;
-			  };
-			}[];
-		  }
+// 		interface OpenAIResponse {
+// 			choices: {
+// 			  message: {
+// 				role: string;
+// 				content: string;
+// 			  };
+// 			}[];
+// 		  }
 		  
-        const result = await response.json() as OpenAIResponse;
-		connection.console.log("Prompt: "+prompt);
-        connection.console.log("LLM Response:"+ JSON.stringify(result, null, 2)); 
-        //connection.console.log("LLM Response:"+ result.choices[0].message.content);
-    } catch (error) {
-        connection.console.error("Error sending data to LLM: " + error);
-    }
-}
+//         const result = await response.json() as OpenAIResponse;
+// 		connection.console.log("Prompt: "+prompt);
+//         connection.console.log("LLM Response:"+ JSON.stringify(result, null, 2)); 
+//         //connection.console.log("LLM Response:"+ result.choices[0].message.content);
+//     } catch (error) {
+//         connection.console.error("Error sending data to LLM: " + error);
+//     }
+// }
 
 // Make the text document manager listen on the connection
 // for open, change and close text document events
