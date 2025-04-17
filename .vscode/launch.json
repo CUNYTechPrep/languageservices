@@ -8,6 +8,7 @@
 			"name": "Launch Client",
 			"runtimeExecutable": "${execPath}",
 			"args": ["--extensionDevelopmentPath=${workspaceRoot}"],
+			"envFile": "${workspaceFolder}/server/.env",
 			"outFiles": [
 				"${workspaceRoot}/client/out/**/*.js",
 				"${workspaceRoot}/server/out/**/*.js"

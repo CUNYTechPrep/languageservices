@@ -22,12 +22,7 @@ import {
 import {
 	TextDocument
 } from 'vscode-languageserver-textdocument';
-const key="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";
-//const key = process.env.API_KEY;
-//create .env file and access your own openrouter api key here
-
-//import * as fs from 'fs';
-import * as yaml from 'yaml';
+const OPENROUTER_KEY = process.env.OPENROUTER_KEY;
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
 const connection = createConnection(ProposedFeatures.all);
@@ -266,79 +261,77 @@ connection.onCompletion(
 		// info and always provide the same completion items.
 		connection.console.log("Completion requested at:");
 		return [
+			//create list structure
 			{
-				label: 'TypeScript',
+				label: 'Yaml',
 				kind: CompletionItemKind.Text,
 				data: 1
 			},
 			{
-				label: 'JavaScript',
+				label: 'data',
 				kind: CompletionItemKind.Text,
 				data: 2
 			},
 			{
-				label: 'Yaml',
+				label: 'prompt',
 				kind: CompletionItemKind.Text,
 				data: 3
 			},
 			{
-				label: 'data',
+				label: '# send-to-llm',
 				kind: CompletionItemKind.Text,
 				data: 4
-			},
-			{
-				label: 'prompt',
-				kind: CompletionItemKind.Text,
-				data: 5
 			}
 		];
 	}
 );
-
 // This handler resolves additional information for the item selected in
 // the completion list.
 connection.onCompletionResolve(
 	(item: CompletionItem): CompletionItem => {
 		if (item.data === 1) {
-			item.detail = 'TypeScript details';
-			item.documentation = 'TypeScript documentation';
-		} else if (item.data === 2) {
-			item.detail = 'JavaScript details';
-			item.documentation = 'JavaScript documentation';
-		}else if (item.data === 3) {
 			item.detail = 'Yaml details';
-			item.documentation = 'Yaml documentation';
+			item.documentation = "Yaml Docs";
 		}
-		else if (item.data === 4) {
+		else if (item.data === 2) {
 			item.detail = 'Yaml array list or dict';
 			item.documentation = 'Yaml documentation';
 		}
-		else if (item.data === 5) {
+		else if (item.data === 3) {
 			item.detail = 'Prompt for llm';
 			item.documentation = 'LLM documention, openrouter etc';
 		}
+		else if (item.data === 4) {
+			item.detail = 'Call to send text to llm';
+		}
 		return item;
+		//when i get the new keywords, i want to append them to here or revise it
+		//and for details i can put the comments or documentation here
 	}
 );
 
 let timeout: NodeJS.Timeout;
 documents.onDidChangeContent(change => {
-	//set timer
 	clearTimeout(timeout);
-
 	timeout = setTimeout(() =>{
 		const text = change.document.getText(); // Get the YAML text
-    try {
-        const parsedYaml = yaml.parse(text); // Parse YAML
-        connection.console.log("YAML Content (Raw):\n" + text);
-        connection.console.log("YAML Content (Parsed Object):\n" + JSON.stringify(parsedYaml,null,2));
-		const prompt=parsedYaml.prompt;
-		const data=parsedYaml.data;
-
-		sendToLLM(prompt,data);
-    } catch (error) {
-        connection.console.error("Error parsing YAML:" + error);
-    }
+		if (!text.trim().endsWith("# send-to-llm")) {
+			connection.console.log("No '# send-to-llm' trigger found at end. Skipping.");
+			return;
+		}
+		try {
+			const llmPrompt = `
+				Convert the following prompts into a YAML format that uses a pseudo code that you can interpret precisely.
+				Evaluate the YAML and write any improvements and extensions.
+				Revise the original YAML to include all the improvements and extension you suggested with comments.
+				Extract all the keywords used in the YAML specification and list them, explaining how each is to be used.
+				Return the revised YAML only.
+				`.trim();
+				//Key words should soon be returned as well, probably in a list or tuple format. These can be used to to replace the existing ones
+			sendToLLM(llmPrompt,text);
+		} catch (error) {
+			connection.console.error("Error parsing YAML:" + error);
+		}
 	},3000);//if user doesnt type for three seconds, then itll send
     
 });
@@ -349,7 +342,7 @@ async function sendToLLM(prompt: string, data: string) {
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
             headers: {
-                "Authorization": "Bearer "+key,
+                "Authorization": "Bearer "+OPENROUTER_KEY,
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
@@ -364,9 +357,20 @@ async function sendToLLM(prompt: string, data: string) {
         });
 
         // Handle the response from the LLM
-        const result = await response.json();
+		
+		interface OpenAIResponse {
+			choices: {
+			  message: {
+				role: string;
+				content: string;
+			  };
+			}[];
+		  }
+		  
+        const result = await response.json() as OpenAIResponse;
+		connection.console.log("Prompt: "+prompt);
         connection.console.log("LLM Response:"+ JSON.stringify(result, null, 2)); 
-        
+        //connection.console.log("LLM Response:"+ result.choices[0].message.content);
     } catch (error) {
         connection.console.error("Error sending data to LLM: " + error);
     }
