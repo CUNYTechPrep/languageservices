@@ -22,7 +22,7 @@ import {
 import {
 	TextDocument
 } from 'vscode-languageserver-textdocument';
-const key="";
+const key="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";
 //const key = process.env.API_KEY;
 //create .env file and access your own openrouter api key here
 
@@ -78,6 +78,50 @@ connection.onInitialize((params: InitializeParams) => {
 	}
 	return result;
 });
+
+connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, range: any, prompt: string})=>{
+	const doc = documents.get(params.uri)
+	if(!doc){
+		return {success: false, error: 'Document not found'}
+	}
+	try{
+		const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+			method: "POST",
+			headers:{
+				"Authorization": "Bearer "+key,
+				"Content-Type": "application/json"
+			},
+			body: JSON.stringify({
+				"model": "deepseek/deepseek-chat-v3-0324:free", // Model 
+				"messages": [
+					{
+						"role": "user",
+						"content": `${params.prompt}\nAnswer consisely as a code comment for yaml. Answer as short as possible, do not repeat prompt or say if you have any question` // Send prompt and data from YAML` // Send prompt and data from YAML
+					}
+				]
+			})
+		});
+		const result = await response.json()
+		connection.console.log("LLM Prompt:" + `${params.prompt}\nAnswer consisely as a code comment for yaml. Answer as short as possible, do not repeat prompt or say if you have any question`)
+		connection.console.log("LLM Response:"+ JSON.stringify(result, null, 2)); 
+		const feedback = "No response from LLM";
+
+		const cleanFeedback = feedback.replace(/\n/g, ' ').trim();
+
+		return {
+			success: true,
+			comment: cleanFeedback,
+			position:{
+				line: params.range.start.line +1,
+				character:0
+			}
+		};
+	} catch (error) {
+		connection.console.error("Error sending data to LLM: " + error);
+		return {success: false, error: 'Error sending data to LLM'}
+	}
+})
+
 
 connection.onInitialized(() => {
 	if (hasConfigurationCapability) {
@@ -276,6 +320,7 @@ connection.onCompletionResolve(
 		return item;
 	}
 );
+
 let timeout: NodeJS.Timeout;
 documents.onDidChangeContent(change => {
 	//set timer
@@ -312,7 +357,7 @@ async function sendToLLM(prompt: string, data: string) {
                 "messages": [
                     {
                         "role": "user",
-                        "content": `${prompt}\n${data}` // Send prompt and data from YAML
+                        "content": `${prompt}\n${data} answer as short as possible, do not repeat prompt or say if you have any question` // Send prompt and data from YAML
                     }
                 ]
             })

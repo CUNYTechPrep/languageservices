@@ -12,6 +12,43 @@
 	"engines": {
 		"vscode": "^1.75.0"
 	},
+	"categories": [
+    "Programming Languages",
+    "Other"
+	],
+	"activationEvents": [
+    "onCommand:extension.getLLMFeedback",
+    "onLanguage:javascript",
+    "onLanguage:typescript",
+    "onLanguage:python",
+    "onLanguage:yaml"
+  	],
+	"main": "./out/extension.js",
+	"contributes": {
+    "commands": [
+      {
+        "command": "extension.getLLMFeedback",
+        "title": "Get LLM Feedback",
+        "category": "AI"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "extension.getLLMFeedback",
+          "group": "navigation",
+          "when": "editorHasSelection"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "extension.getLLMFeedback",
+          "group": "navigation",
+          "when": "editorHasSelection"
+        }
+      ]
+    }
+  	},
 	"dependencies": {
 		"glob": "^11.0.0",
 		"vscode-languageclient": "^9.0.1"
@@ -19,5 +56,12 @@
 	"devDependencies": {
 		"@types/vscode": "^1.75.1",
 		"@vscode/test-electron": "^2.3.9"
-	}
+	},
+	"scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "pretest": "npm run compile && npm run lint",
+    "test": "node ./out/test/runTest.js"
+  }
 }

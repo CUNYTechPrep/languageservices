@@ -5,7 +5,7 @@
 
 import * as path from 'path';
 import { workspace, ExtensionContext } from 'vscode';
-
+import * as vscode from 'vscode'
 import {
 	LanguageClient,
 	LanguageClientOptions,
@@ -34,7 +34,10 @@ export function activate(context: ExtensionContext) {
 	// Options to control the language client
 	const clientOptions: LanguageClientOptions = {
 		// Register the server for plain text documents
-		documentSelector: [{ scheme: 'file', language: 'plaintext' }],
+		documentSelector: [
+			{ scheme: 'file', language: 'plaintext' },
+			{ scheme: 'file', language: 'yaml'}
+		],
 		synchronize: {
 			// Notify the server about file changes to '.clientrc files contained in the workspace
 			fileEvents: workspace.createFileSystemWatcher('**/.clientrc')
@@ -48,6 +51,69 @@ export function activate(context: ExtensionContext) {
 		serverOptions,
 		clientOptions
 	);
+	const feedbackCommand = vscode.commands.registerCommand('extension.getLLMFeedback', async () =>{
+		const editor = vscode.window.activeTextEditor;
+		if (!editor) {
+			vscode.window.showErrorMessage('No active editor found.');
+			return;
+		}
+		const selection = editor.selection;
+		const text = editor.document.getText(selection);
+		if (!text) {
+			vscode.window.showErrorMessage('No text selected.');
+			return;
+		}
+
+		await vscode.window.withProgress({
+			location:vscode.ProgressLocation.Notification,
+			title: "Getting LLM Feedback",
+			cancellable: false
+		}, async () => {
+			try{
+				const response = await client.sendRequest<{
+					success: boolean;
+					comment?: string;
+					line?: number;
+				}>('llm-feedback.insertComment',{
+					uri: editor.document.uri.toString(),
+					range:selection,
+					text:text
+				});
+
+				if(response.success && response.comment){
+					console.log(response)
+					await editor.edit(editBuilder => {
+						const line = response.line !== undefined ?
+							response.line :
+							selection.end.line + 1;
+						const position = new vscode.Position(line, 0);
+						const currentLine = editor.document.lineAt(selection.start.line)
+						const indent = currentLine.text.match(/^\s*/)?.[0] || '';
+						const commentText= `\n${indent}//LLM Feedback: ${response.comment}\n`
+						editBuilder.insert(position, commentText);
+					})
+				}
+			} catch (error) {
+				vscode.window.showErrorMessage('Error getting LLM feedback: ' + error.message);
+			}
+		})
+	})
+	console.log("Extension activating...");
+	const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
+    statusBarItem.text = '$(sparkle) Get LLM Feedback';
+    statusBarItem.command = 'extension.getLLMFeedback';
+    context.subscriptions.push(
+		vscode.window.onDidChangeActiveTextEditor(editor => {
+			statusBarItem.show();
+		})
+	);
+    console.log("Status bar item created"); // Confirm this logs
+
+	context.subscriptions.push(
+		client,feedbackCommand, statusBarItem
+	);
+
+	vscode.commands.executeCommand('setContext', 'hasSelection', true);
 
 	// Start the client. This will also launch the server
 	client.start();
