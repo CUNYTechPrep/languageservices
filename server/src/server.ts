@@ -81,6 +81,14 @@ connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, 
 		return {success: false, error: 'Document not found'}
 	}
 	try{
+		const llmPrompt = `
+				1.Convert the following prompts into a YAML format that uses a pseudo code that you can interpret precisely.
+				2.Evaluate the YAML and write any improvements and extensions.
+				3.Revise the original YAML to include all the improvements and extension you suggested with comments.
+				4.Extract all the keywords used in the YAML specification and list them, explaining how each is to be used.
+				Return prompt 3 and 4 only. Prompt 4 should have the keywords in json format, keywords{word:,explanation:}
+				`.trim();
+				//Key words should soon be returned as well, probably in a list or tuple format. These can be used to to replace the existing ones
 		const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
 			method: "POST",
 			headers:{
