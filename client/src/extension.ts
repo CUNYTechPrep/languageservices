@@ -70,24 +70,47 @@ export function activate(context: ExtensionContext) {
 				const response = await client.sendRequest<{
 					success: boolean;
 					comment?: string;
-					line?: number;
+					replaceSelection?: boolean;
+					replacement?: string;
+					position?: {
+						line: number;
+						character: number;
+					};
 				}>('llm-feedback.insertComment',{
 					uri: editor.document.uri.toString(),
 					range:selection,
 					text:text
 				});
-				if(response.success && response.comment){
-					console.log(response)
-					await editor.edit(editBuilder => {
-						const line = response.line !== undefined ?
-							response.line :
+				// if(response.success && response.comment){
+				// 	console.log(response)
+				// 	await editor.edit(editBuilder => {
+				// 		const line = response.line !== undefined ?
+				// 			response.line :
+				// 			selection.end.line + 1;
+				// 		const position = new vscode.Position(line, 0);
+				// 		const currentLine = editor.document.lineAt(selection.start.line)
+				// 		const indent = currentLine.text.match(/^\s*/)?.[0] || '';
+				// 		const commentText= `\n${indent}//LLM Feedback: ${response.comment}\n`
+				// 		editBuilder.insert(position, commentText);
+				// 	})
+				// }
+				if (response.success) {
+					if (response.replaceSelection && response.replacement) {
+						await editor.edit(editBuilder => {
+							editBuilder.replace(selection, response.replacement);
+						});
+					} else if (response.comment) {
+						await editor.edit(editBuilder => {
+							const line = response.position !== undefined ?
+							response.position.line :
 							selection.end.line + 1;
-						const position = new vscode.Position(line, 0);
-						const currentLine = editor.document.lineAt(selection.start.line)
-						const indent = currentLine.text.match(/^\s*/)?.[0] || '';
-						const commentText= `\n${indent}//LLM Feedback: ${response.comment}\n`
-						editBuilder.insert(position, commentText);
-					})
+							const position = new vscode.Position(line, 0);
+							const currentLine = editor.document.lineAt(selection.start.line)
+							const indent = currentLine.text.match(/^\s*/)?.[0] || '';
+							const commentText= `\n${indent}//LLM Feedback: ${response.comment}\n`
+							editBuilder.insert(position, commentText);
+						});
+					}
 				}
 			} catch (error) {
 				vscode.window.showErrorMessage('Error getting LLM feedback: ' + error.message);

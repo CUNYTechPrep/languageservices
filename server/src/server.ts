@@ -39,6 +39,16 @@ let hasDiagnosticRelatedInformationCapability = false;
 function parseYamlContent(content: string) {
 	try {
 		const parsedContent = parse(content);
+
+		if (parsedContent.correct === true) {
+			return {
+				parsedContent,
+				isCorrection: true,
+				shouldReplace: true,
+				dataToCorrect: parsedContent.data || ""
+			};
+		}
+
 		const parsedPrompt = parsedContent.prompt;
 		let parsedData = parsedContent.data;
 		if (typeof parsedData === 'string') {
@@ -47,7 +57,8 @@ function parseYamlContent(content: string) {
 		return {
 			parsedContent,
 			parsedPrompt,
-			parsedData
+			parsedData,
+			isCorrection: false
 		};
 	} catch (error) {
 		connection.console.error("Error parsing YAML: " + error);
@@ -121,16 +132,26 @@ connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, 
 				`.trim();
 				// Not using the above, but leaving it here for future.
 				//Key words should soon be returned as well, probably in a list or tuple format. These can be used to to replace the existing ones
-		const contentForLLM = `
-		I have the following YAML text:
-		${params.text}
+		let contentForLLM;
+		if (parsedContent.isCorrection) {
+			contentForLLM = `
+			Please correct the following code or syntac:
+			${parsedContent.dataToCorrect}
 
-		Parsed YAML text here:
-		prompt: ${parsedContent.parsedPrompt}
-		data: ${JSON.stringify(parsedContent.parsedData)}
-		Perform the requested operation from the prompt on the data.
-		Return ONLY the result as a single YAML Comment line, with no explanation, code blocks, or additional formatting.
-		`
+			Return ONLY the corrected code. NOTHING ELSE. 
+			`;
+		} else {
+			contentForLLM = `
+			I have the following YAML text:
+			${params.text}
+	
+			Parsed YAML text here:
+			prompt: ${parsedContent.parsedPrompt}
+			data: ${JSON.stringify(parsedContent.parsedData)}
+			Perform the requested operation from the prompt on the data.
+			Return ONLY the result as a single YAML Comment line, with no explanation, code blocks, or additional formatting.
+			`;
+		}
 		const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
 			method: "POST",
 			headers:{
@@ -148,28 +169,36 @@ connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, 
 			})
 		});
 		interface OpenAIResponse {
-						choices: {
-						  message: {
-							role: string;
-							content: string;
-						  };
-						}[];
-					  }
+			choices: {
+				message: {
+					role: string;
+					content: string;
+				};
+			}[];
+		}
 		const result = await response.json() as OpenAIResponse
 		connection.console.log("LLM Prompt:" + contentForLLM)
 		connection.console.log("LLM Response:"+ JSON.stringify(result, null, 2)); 
 		const feedback = result.choices[0].message.content;
 
-		const cleanFeedback = feedback.replace(/\n/g, ' ').trim();
-
-		return {
-			success: true,
-			comment: cleanFeedback,
-			position:{
-				line: params.range.start.line +1,
-				character:0
-			}
-		};
+		if (parsedContent.isCorrection && parsedContent.shouldReplace) {
+			return {
+				success: true,
+				replaceSelection: true,
+				replacement: feedback
+			};
+		} else {
+			const cleanFeedback = feedback.replace(/\n/g, ' ').trim();
+			return {
+				success: true,
+				comment: cleanFeedback,
+				position:{
+					line: params.range.start.line +1,
+					character:0
+				}
+			};
+		}
+		
 	} catch (error) {
 		connection.console.error("Error sending data to LLM: " + error);
 		return {success: false, error: 'Error sending data to LLM'}
