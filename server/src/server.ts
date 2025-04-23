@@ -369,6 +369,11 @@ connection.onCompletion(
 				label: '# send-to-llm',
 				kind: CompletionItemKind.Text,
 				data: 4
+			},
+			{
+				label: 'correct',
+				kind: CompletionItemKind.Text,
+				data: 5
 			}
 		];
 	}
@@ -391,6 +396,10 @@ connection.onCompletionResolve(
 		}
 		else if (item.data === 4) {
 			item.detail = 'Call to send text to llm';
+		}
+		else if (item.data === 5) {
+			item.detail = 'Correct code or syntax';
+			item.documentation = 'When set to true, the LLM will correct the code in the data section and replace the selection with the corrected code.';
 		}
 		return item;
 		//when i get the new keywords, i want to append them to here or revise it
