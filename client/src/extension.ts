@@ -107,7 +107,7 @@ export function activate(context: ExtensionContext) {
 							const position = new vscode.Position(line, 0);
 							const currentLine = editor.document.lineAt(selection.start.line)
 							const indent = currentLine.text.match(/^\s*/)?.[0] || '';
-							const commentText= `\n${indent}//LLM Feedback: ${response.comment}\n`
+							const commentText= `\n${indent}# LLM Feedback: ${response.comment}\n`
 							editBuilder.insert(position, commentText);
 						});
 					}

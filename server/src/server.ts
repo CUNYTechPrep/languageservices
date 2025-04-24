@@ -5,6 +5,9 @@
 import {
 	createConnection,
 	TextDocuments,
+	NotificationType,
+	ShowMessageNotification,
+	MessageType,
 	Diagnostic,
 	DiagnosticSeverity,
 	ProposedFeatures,
@@ -19,11 +22,14 @@ import {
 	type DocumentDiagnosticReport
 } from 'vscode-languageserver/node';
 
+import {LLMError, handleLLMError} from './errorHandler';
+
 import {
 	TextDocument
 } from 'vscode-languageserver-textdocument';
 import { parse, stringify } from 'yaml';
-const OPENROUTER_KEY = process.env.OPENROUTER_KEY;;
+const OPENROUTER_KEY = process.env.VITE_OPENROUTER_KEY;
+
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
 const connection = createConnection(ProposedFeatures.all);
@@ -106,6 +112,13 @@ connection.onInitialize((params: InitializeParams) => {
 	return result;
 });
 
+function notifyClientError(message:string){
+	connection.sendNotification(ShowMessageNotification.type, {
+		type: MessageType.Error,
+		message: message
+	});
+}
+
 connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, range: any, text: string})=>{
 	// use func parseYamlContent() here
 	console.log(params.text);
@@ -168,18 +181,35 @@ connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, 
 				]
 			})
 		});
+		
+		//hanlde error here
+		if (!response.ok){
+			const error = await response.json() as {error:{ message: string, code: string}};
+			console.log(error)
+			throw new LLMError(error.error.code, error.error.message);
+		}
+
 		interface OpenAIResponse {
 			choices: {
-				message: {
+				message?: {
 					role: string;
 					content: string;
 				};
+				error?: {
+					message: string;
+					code: string;
+				};
 			}[];
 		}
-		const result = await response.json() as OpenAIResponse
-		connection.console.log("LLM Prompt:" + contentForLLM)
+		const result = await response.json() as OpenAIResponse;
+		if (result.choices[0].error) {
+			const error = result.choices[0].error;
+			throw new LLMError(error.code, error.message);
+		}
+		console.log(result);
+		connection.console.log("LLM Prompt:" + contentForLLM);
 		connection.console.log("LLM Response:"+ JSON.stringify(result, null, 2)); 
-		const feedback = result.choices[0].message.content;
+		const feedback = result.choices[0]?.message?.content ?? '';
 
 		if (parsedContent.isCorrection && parsedContent.shouldReplace) {
 			return {
@@ -200,8 +230,11 @@ connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, 
 		}
 		
 	} catch (error) {
-		connection.console.error("Error sending data to LLM: " + error);
-		return {success: false, error: 'Error sending data to LLM'}
+		if (error instanceof LLMError){
+			const errorMessage = handleLLMError(error);
+			notifyClientError(errorMessage);
+			return {success: false, error: errorMessage}
+		}
 	}
 })
 
