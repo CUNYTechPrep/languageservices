@@ -81,19 +81,6 @@ export function activate(context: ExtensionContext) {
 					range:selection,
 					text:text
 				});
-				// if(response.success && response.comment){
-				// 	console.log(response)
-				// 	await editor.edit(editBuilder => {
-				// 		const line = response.line !== undefined ?
-				// 			response.line :
-				// 			selection.end.line + 1;
-				// 		const position = new vscode.Position(line, 0);
-				// 		const currentLine = editor.document.lineAt(selection.start.line)
-				// 		const indent = currentLine.text.match(/^\s*/)?.[0] || '';
-				// 		const commentText= `\n${indent}//LLM Feedback: ${response.comment}\n`
-				// 		editBuilder.insert(position, commentText);
-				// 	})
-				// }
 				if (response.success) {
 					if (response.replaceSelection && response.replacement) {
 						await editor.edit(editBuilder => {
@@ -127,6 +114,12 @@ export function activate(context: ExtensionContext) {
 		})
 	);
     console.log("Status bar item created"); // Confirm this logs
+
+	const schemaButton = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 999);
+	schemaButton.text = "$(symbol-keyword) Schema-based Querying";
+	schemaButton.command = 'extension.sendSchemaKeywordsToLLM';
+	schemaButton.show();
+	context.subscriptions.push(schemaButton);
 
 	context.subscriptions.push(
 		client,feedbackCommand, statusBarItem
