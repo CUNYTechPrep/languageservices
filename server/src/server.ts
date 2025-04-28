@@ -72,6 +72,19 @@ function parseYamlContent(content: string) {
 	}
 }
 
+function extractSchemaKeywords(schema: any) {
+	const keywords = [];
+	if (schema.properties) {
+		// TODO: await for Matthew's Schema implementation to extract the right important keywords
+		for (const [key, val] of Object.entries(schema.properties)) {
+			keywords.push({
+				key_word: key,
+				value_type: val
+			});
+		}
+	}
+}
+
 connection.onInitialize((params: InitializeParams) => {
 	const capabilities = params.capabilities;
 
