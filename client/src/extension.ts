@@ -123,7 +123,11 @@ export function activate(context: ExtensionContext) {
 					}
 				}
 			};
-			const response = await client.sendRequest('llm-schema.extractKeywords', {
+			const response = await client.sendRequest<{
+				success: boolean;
+				keywords?: Array<{key_word: string, value_type: any}>;
+				error?: string;
+			}>('llm-schema.extractKeywords', {
 				schema: placeholderSchema
 			});
 			if (response.success) {
