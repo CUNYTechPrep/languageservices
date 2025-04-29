@@ -83,6 +83,8 @@ function extractSchemaKeywords(schema: any) {
 			});
 		}
 	}
+	return keywords;
+	// it's expected that all of the schema important keywords will show up in the return as an []
 }
 
 connection.onInitialize((params: InitializeParams) => {
@@ -251,6 +253,15 @@ connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, 
 	}
 })
 
+connection.onRequest('llm-schema.extractKeywords', async (params: { schema: any }) => {
+	try {
+		const keywords = extractSchemaKeywords(params.schema);
+		return { success: true, keywords };
+	} catch (error) {
+		connection.console.error("Couldn't extract keywords: " + error);
+		return { success: false, error: "Couldn't extract keywords"};
+	}
+});
 
 connection.onInitialized(() => {
 	if (hasConfigurationCapability) {

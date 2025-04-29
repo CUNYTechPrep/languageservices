@@ -104,6 +104,41 @@ export function activate(context: ExtensionContext) {
 			}
 		})
 	})
+
+	const sendSchemaKeywordsCommand = vscode.commands.registerCommand('extension.sendSchemaKeywordsToLLM', async () => {
+		try {
+			const placeholderSchema = {
+				"properties": {
+					"prompt": {
+						"type": "string",
+						"description": "Instructions for the LLM"
+					},
+					"data": {
+						"type": "string",
+						"description": "Content to be computed, associated with the given prompt"
+					},
+					"correct": {
+						"type": "boolean",
+						"description": "When set to true, LLM will correct given data and directly replace original data"
+					}
+				}
+			};
+			const response = await client.sendRequest('llm-schema.extractKeywords', {
+				schema: placeholderSchema
+			});
+			if (response.success) {
+				vscode.window.showInformationMessage(
+				  `Extracted ${response.keywords.length} total keywords from JSON schema`
+				);
+				
+				console.log("Keywords:", response.keywords);
+			  } else {
+				vscode.window.showErrorMessage("Failed to extract keywords");
+			  }
+		} catch (error) {
+			vscode.window.showErrorMessage(`Error: ${error.message}`);
+		}
+	});
 	console.log("Extension activating...");
 	const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
     statusBarItem.text = '$(sparkle) Get LLM Feedback';
