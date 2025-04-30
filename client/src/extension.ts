@@ -123,16 +123,23 @@ export function activate(context: ExtensionContext) {
 					}
 				}
 			};
+			let yamlText = undefined;
+			const editor = vscode.window.activeTextEditor;
+			if (editor && editor.document.languageId === 'yaml') {
+				yamlText = editor.document.getText();
+			}
 			const response = await client.sendRequest<{
 				success: boolean;
-				keywords?: Array<{key_word: string, value_type: any}>;
+				keywords?: Array<{key_word: string, value_type: any, appearsInYaml?: boolean}>;
 				error?: string;
 			}>('llm-schema.extractKeywords', {
-				schema: placeholderSchema
+				schema: placeholderSchema,
+				yamlText: yamlText
 			});
 			if (response.success) {
+				const usedKeywords = response.keywords.filter(k => k.appearsInYaml).length;
 				vscode.window.showInformationMessage(
-				  `Extracted ${response.keywords.length} total keywords from JSON schema`
+				  `Extracted ${usedKeywords} total keywords from JSON schema`
 				);
 				
 				console.log("Keywords:", response.keywords);
