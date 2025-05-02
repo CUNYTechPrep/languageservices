@@ -22,13 +22,15 @@ import {
 	type DocumentDiagnosticReport
 } from 'vscode-languageserver/node';
 
+import {logger, logErrorToFile, logResponseToFile} from './logger';
+
 import {LLMError, handleLLMError} from './errorHandler';
 
 import {
 	TextDocument
 } from 'vscode-languageserver-textdocument';
 import { parse, stringify } from 'yaml';
-const OPENROUTER_KEY = process.env.VITE_OPENROUTER_KEY;
+const OPENROUTER_KEY = process.env.VITE_OPENROUTER_K;
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -210,7 +212,7 @@ connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, 
 		connection.console.log("LLM Prompt:" + contentForLLM);
 		connection.console.log("LLM Response:"+ JSON.stringify(result, null, 2)); 
 		const feedback = result.choices[0]?.message?.content ?? '';
-
+		logResponseToFile("deepseek/deepseek-chat-v3-0324:free", params.text, result);
 		if (parsedContent.isCorrection && parsedContent.shouldReplace) {
 			return {
 				success: true,
@@ -231,8 +233,11 @@ connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, 
 		
 	} catch (error) {
 		if (error instanceof LLMError){
+			const model = 'deepseek/deepseek-chat-v3-0324:free';
+			logErrorToFile(model, params.text, error)
 			const errorMessage = handleLLMError(error);
 			notifyClientError(errorMessage);
+			notifyClientError(error.message)
 			return {success: false, error: errorMessage}
 		}
 	}

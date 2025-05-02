@@ -94,6 +94,7 @@ export function activate(context: ExtensionContext) {
 				// 		editBuilder.insert(position, commentText);
 				// 	})
 				// }
+				console.log(response)
 				if (response.success) {
 					if (response.replaceSelection && response.replacement) {
 						await editor.edit(editBuilder => {
