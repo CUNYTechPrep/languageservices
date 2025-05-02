@@ -3,26 +3,26 @@
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
 import {
-	createConnection,
-	TextDocuments,
-	Diagnostic,
-	DiagnosticSeverity,
-	ProposedFeatures,
-	InitializeParams,
-	DidChangeConfigurationNotification,
-	CompletionItem,
-	CompletionItemKind,
-	TextDocumentPositionParams,
-	TextDocumentSyncKind,
-	InitializeResult,
-	DocumentDiagnosticReportKind,
-	type DocumentDiagnosticReport
-} from 'vscode-languageserver/node';
+  createConnection,
+  TextDocuments,
+  Diagnostic,
+  DiagnosticSeverity,
+  ProposedFeatures,
+  InitializeParams,
+  DidChangeConfigurationNotification,
+  CompletionItem,
+  CompletionItemKind,
+  TextDocumentPositionParams,
+  TextDocumentSyncKind,
+  InitializeResult,
+  DocumentDiagnosticReportKind,
+  type DocumentDiagnosticReport,
+} from "vscode-languageserver/node";
 
-import {
-	TextDocument
-} from 'vscode-languageserver-textdocument';
-const OPENROUTER_KEY = process.env.OPENROUTER_KEY;;
+import * as YAML from "yaml";
+
+import { TextDocument } from "vscode-languageserver-textdocument";
+const OPENROUTER_KEY = process.env.OPENROUTER_KEY;
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
 const connection = createConnection(ProposedFeatures.all);
@@ -35,121 +35,214 @@ let hasWorkspaceFolderCapability = false;
 let hasDiagnosticRelatedInformationCapability = false;
 
 connection.onInitialize((params: InitializeParams) => {
-	const capabilities = params.capabilities;
+  const capabilities = params.capabilities;
 
-	// Does the client support the `workspace/configuration` request?
-	// If not, we fall back using global settings.
-	hasConfigurationCapability = !!(
-		capabilities.workspace && !!capabilities.workspace.configuration
-	);
-	hasWorkspaceFolderCapability = !!(
-		capabilities.workspace && !!capabilities.workspace.workspaceFolders
-	);
-	hasDiagnosticRelatedInformationCapability = !!(
-		capabilities.textDocument &&
-		capabilities.textDocument.publishDiagnostics &&
-		capabilities.textDocument.publishDiagnostics.relatedInformation
-	);
+  // Does the client support the `workspace/configuration` request?
+  // If not, we fall back using global settings.
+  hasConfigurationCapability = !!(
+    capabilities.workspace && !!capabilities.workspace.configuration
+  );
+  hasWorkspaceFolderCapability = !!(
+    capabilities.workspace && !!capabilities.workspace.workspaceFolders
+  );
+  hasDiagnosticRelatedInformationCapability = !!(
+    capabilities.textDocument &&
+    capabilities.textDocument.publishDiagnostics &&
+    capabilities.textDocument.publishDiagnostics.relatedInformation
+  );
 
-	const result: InitializeResult = {
-		capabilities: {
-			textDocumentSync: TextDocumentSyncKind.Incremental,
-			// Tell the client that this server supports code completion.
-			completionProvider: {
-				resolveProvider: true
-			},
-			diagnosticProvider: {
-				interFileDependencies: false,
-				workspaceDiagnostics: false
-			}
-		}
-	};
-	if (hasWorkspaceFolderCapability) {
-		result.capabilities.workspace = {
-			workspaceFolders: {
-				supported: true
-			}
-		};
-	}
-	return result;
+  const result: InitializeResult = {
+    capabilities: {
+      textDocumentSync: TextDocumentSyncKind.Incremental,
+      // Tell the client that this server supports code completion.
+      completionProvider: {
+        resolveProvider: true,
+      },
+      diagnosticProvider: {
+        interFileDependencies: false,
+        workspaceDiagnostics: false,
+      },
+    },
+  };
+  if (hasWorkspaceFolderCapability) {
+    result.capabilities.workspace = {
+      workspaceFolders: {
+        supported: true,
+      },
+    };
+  }
+  return result;
 });
 
-connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, range: any, text: string})=>{
-	console.log(params.text);
-	const doc = documents.get(params.uri)
-	if(!doc){
-		return {success: false, error: 'Document not found'}
-	}
-	try{
-		const llmPrompt = `
+connection.onRequest(
+  "llm-feedback.insertComment",
+  async (params: { uri: string; range: any; text: string }) => {
+    console.log(params.text);
+    const doc = documents.get(params.uri);
+    if (!doc) {
+      return { success: false, error: "Document not found" };
+    }
+    try {
+      const llmPrompt = `
 				1.Convert the following prompts into a YAML format that uses a pseudo code that you can interpret precisely.
 				2.Evaluate the YAML and write any improvements and extensions.
 				3.Revise the original YAML to include all the improvements and extension you suggested with comments.
 				4.Extract all the keywords used in the YAML specification and list them, explaining how each is to be used.
 				Return prompt 3 and 4 only. Prompt 4 should have the keywords in json format, keywords{word:,explanation:}
 				`.trim();
-				//Key words should soon be returned as well, probably in a list or tuple format. These can be used to to replace the existing ones
-		const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-			method: "POST",
-			headers:{
-				"Authorization": "Bearer "+OPENROUTER_KEY,
-				"Content-Type": "application/json"
-			},
-			body: JSON.stringify({
-				"model": "deepseek/deepseek-chat-v3-0324:free", // Model 
-				"messages": [
-					{
-						"role": "user",
-						"content": `${params.text}\nAnswer consisely as a code comment for yaml. Answer as short as possible, do not repeat prompt or say if you have any question` // Send prompt and data from YAML` // Send prompt and data from YAML
-					}
-				]
-			})
-		});
-		interface OpenAIResponse {
-						choices: {
-						  message: {
-							role: string;
-							content: string;
-						  };
-						}[];
-					  }
-		const result = await response.json() as OpenAIResponse
-		connection.console.log("LLM Prompt:" + `${params.text}\nAnswer consisely as a code comment for yaml. Answer as short as possible, do not repeat prompt or say if you have any question`)
-		connection.console.log("LLM Response:"+ JSON.stringify(result, null, 2)); 
-		const feedback = result.choices[0].message.content;
+      //Key words should soon be returned as well, probably in a list or tuple format. These can be used to to replace the existing ones
+      const response = await fetch(
+        "https://openrouter.ai/api/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer " + OPENROUTER_KEY,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "deepseek/deepseek-chat-v3-0324:free", // Model
+            messages: [
+              {
+                role: "user",
+                content: `${params.text}\nAnswer consisely as a code comment for yaml. Answer as short as possible, do not repeat prompt or say if you have any question`, // Send prompt and data from YAML` // Send prompt and data from YAML
+              },
+            ],
+          }),
+        }
+      );
+      interface OpenAIResponse {
+        choices: {
+          message: {
+            role: string;
+            content: string;
+          };
+        }[];
+      }
+      const result = (await response.json()) as OpenAIResponse;
+      connection.console.log(
+        "LLM Prompt:" +
+          `${params.text}\nAnswer consisely as a code comment for yaml. Answer as short as possible, do not repeat prompt or say if you have any question`
+      );
+      connection.console.log("LLM Response:" + JSON.stringify(result, null, 2));
+      const feedback = result.choices[0].message.content;
 
-		const cleanFeedback = feedback.replace(/\n/g, ' ').trim();
+      const cleanFeedback = feedback.replace(/\n/g, " ").trim();
 
-		return {
-			success: true,
-			comment: cleanFeedback,
-			position:{
-				line: params.range.start.line +1,
-				character:0
-			}
-		};
-	} catch (error) {
-		connection.console.error("Error sending data to LLM: " + error);
-		return {success: false, error: 'Error sending data to LLM'}
-	}
-})
+      return {
+        success: true,
+        comment: cleanFeedback,
+        position: {
+          line: params.range.start.line + 1,
+          character: 0,
+        },
+      };
+    } catch (error) {
+      connection.console.error("Error sending data to LLM: " + error);
+      return { success: false, error: "Error sending data to LLM" };
+    }
+  }
+);
 
+const resolveExpression = (expr: string, vars: Record<string, any>): any => {
+  const trimmedExpr = expr.trim();
+  const parts = trimmedExpr.split(/[.\[\]]+/).filter(Boolean);
+  let result: any = undefined;
+
+  const varName = parts[0];
+  if (!(varName in vars)) {
+    return undefined;
+  }
+
+  result = vars[varName];
+
+  for (let i = 1; i < parts.length; i++) {
+    const part = parts[i];
+
+    const index = !isNaN(Number(part)) ? Number(part) : part;
+
+    if (result === null || result === undefined) {
+      return undefined;
+    }
+
+    result = result[index];
+
+    if (result === undefined) {
+      return undefined;
+    }
+  }
+
+  return result;
+};
+
+const replacePlaceholders = (obj: any, vars: Record<string, any>): any => {
+  if (typeof obj === "string") {
+    return obj.replace(/\${(.*?)}/g, (match, expr) => {
+      const value = resolveExpression(expr, vars);
+      if (value === undefined) {
+        throw new Error(`Variable "${expr}" is not defined in context.`);
+      }
+      return value;
+    });
+  } else if (typeof obj === "object" && obj !== null && !Array.isArray(obj)) {
+    for (const key in obj) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+        obj[key] = replacePlaceholders(obj[key], vars);
+      }
+    }
+  } else if (Array.isArray(obj)) {
+    for (let i = 0; i < obj.length; i++) {
+      obj[i] = replacePlaceholders(obj[i], vars);
+    }
+  }
+  return obj;
+};
+
+connection.onRequest(
+  "yaml.replaceVariable",
+  async (params: { uri: string; context: any; text: string }) => {
+    const doc = documents.get(params.uri);
+    if (!doc) {
+      return { success: false, error: "Document not found" };
+    }
+    try {
+      const contextData = params.context;
+      const yamlData = YAML.parse(params.text);
+      // Replace variables in the text using the context data
+      const replacedData = replacePlaceholders(yamlData, contextData);
+      connection.console.log(JSON.stringify(replacedData, null, 2));
+      // Convert the modified YAML object back to a string
+      const yamlString = YAML.stringify(replacedData);
+      connection.console.log(yamlString);
+      // Send the modified YAML string back to the client
+      return {
+        success: true,
+        modifiedText: yamlString,
+      };
+    } catch (error) {
+      connection.console.error("Error processing YAML: " + error);
+      return { success: false, error: "Error processing YAML" };
+    }
+  }
+);
 
 connection.onInitialized(() => {
-	if (hasConfigurationCapability) {
-		// Register for all configuration changes.
-		connection.client.register(DidChangeConfigurationNotification.type, undefined);
-	}
-	if (hasWorkspaceFolderCapability) {
-		connection.workspace.onDidChangeWorkspaceFolders(_event => {
-			connection.console.log('Workspace folder change event received.');
-		});
-	}
+  if (hasConfigurationCapability) {
+    // Register for all configuration changes.
+    connection.client.register(
+      DidChangeConfigurationNotification.type,
+      undefined
+    );
+  }
+  if (hasWorkspaceFolderCapability) {
+    connection.workspace.onDidChangeWorkspaceFolders((_event) => {
+      connection.console.log("Workspace folder change event received.");
+    });
+  }
 });
 
 // The example settings
 interface ExampleSettings {
-	maxNumberOfProblems: number;
+  maxNumberOfProblems: number;
 }
 
 // The global settings, used when the `workspace/configuration` request is not supported by the client.
@@ -161,171 +254,165 @@ let globalSettings: ExampleSettings = defaultSettings;
 // Cache the settings of all open documents
 const documentSettings = new Map<string, Thenable<ExampleSettings>>();
 
-connection.onDidChangeConfiguration(change => {
-	if (hasConfigurationCapability) {
-		// Reset all cached document settings
-		documentSettings.clear();
-	} else {
-		globalSettings = (
-			(change.settings.languageServerExample || defaultSettings)
-		);
-	}
-	// Refresh the diagnostics since the `maxNumberOfProblems` could have changed.
-	// We could optimize things here and re-fetch the setting first can compare it
-	// to the existing setting, but this is out of scope for this example.
-	connection.languages.diagnostics.refresh();
+connection.onDidChangeConfiguration((change) => {
+  if (hasConfigurationCapability) {
+    // Reset all cached document settings
+    documentSettings.clear();
+  } else {
+    globalSettings = change.settings.languageServerExample || defaultSettings;
+  }
+  // Refresh the diagnostics since the `maxNumberOfProblems` could have changed.
+  // We could optimize things here and re-fetch the setting first can compare it
+  // to the existing setting, but this is out of scope for this example.
+  connection.languages.diagnostics.refresh();
 });
 
 function getDocumentSettings(resource: string): Thenable<ExampleSettings> {
-	if (!hasConfigurationCapability) {
-		return Promise.resolve(globalSettings);
-	}
-	let result = documentSettings.get(resource);
-	if (!result) {
-		result = connection.workspace.getConfiguration({
-			scopeUri: resource,
-			section: 'languageServerExample'
-		});
-		documentSettings.set(resource, result);
-	}
-	return result;
+  if (!hasConfigurationCapability) {
+    return Promise.resolve(globalSettings);
+  }
+  let result = documentSettings.get(resource);
+  if (!result) {
+    result = connection.workspace.getConfiguration({
+      scopeUri: resource,
+      section: "languageServerExample",
+    });
+    documentSettings.set(resource, result);
+  }
+  return result;
 }
 
 // Only keep settings for open documents
-documents.onDidClose(e => {
-	documentSettings.delete(e.document.uri);
+documents.onDidClose((e) => {
+  documentSettings.delete(e.document.uri);
 });
 
-
 connection.languages.diagnostics.on(async (params) => {
-	const document = documents.get(params.textDocument.uri);
-	if (document !== undefined) {
-		return {
-			kind: DocumentDiagnosticReportKind.Full,
-			items: await validateTextDocument(document)
-		} satisfies DocumentDiagnosticReport;
-	} else {
-		// We don't know the document. We can either try to read it from disk
-		// or we don't report problems for it.
-		return {
-			kind: DocumentDiagnosticReportKind.Full,
-			items: []
-		} satisfies DocumentDiagnosticReport;
-	}
+  const document = documents.get(params.textDocument.uri);
+  if (document !== undefined) {
+    return {
+      kind: DocumentDiagnosticReportKind.Full,
+      items: await validateTextDocument(document),
+    } satisfies DocumentDiagnosticReport;
+  } else {
+    // We don't know the document. We can either try to read it from disk
+    // or we don't report problems for it.
+    return {
+      kind: DocumentDiagnosticReportKind.Full,
+      items: [],
+    } satisfies DocumentDiagnosticReport;
+  }
 });
 
 // The content of a text document has changed. This event is emitted
 // when the text document first opened or when its content has changed.
-documents.onDidChangeContent(change => {
-	validateTextDocument(change.document);
+documents.onDidChangeContent((change) => {
+  validateTextDocument(change.document);
 });
 
-async function validateTextDocument(textDocument: TextDocument): Promise<Diagnostic[]> {
-	// In this simple example we get the settings for every validate run.
-	const settings = await getDocumentSettings(textDocument.uri);
+async function validateTextDocument(
+  textDocument: TextDocument
+): Promise<Diagnostic[]> {
+  // In this simple example we get the settings for every validate run.
+  const settings = await getDocumentSettings(textDocument.uri);
 
-	// The validator creates diagnostics for all uppercase words length 2 and more
-	const text = textDocument.getText();
-	const pattern = /\b[A-Z]{2,}\b/g;
-	let m: RegExpExecArray | null;
+  // The validator creates diagnostics for all uppercase words length 2 and more
+  const text = textDocument.getText();
+  const pattern = /\b[A-Z]{2,}\b/g;
+  let m: RegExpExecArray | null;
 
-	let problems = 0;
-	const diagnostics: Diagnostic[] = [];
-	while ((m = pattern.exec(text)) && problems < settings.maxNumberOfProblems) {
-		problems++;
-		const diagnostic: Diagnostic = {
-			severity: DiagnosticSeverity.Warning,
-			range: {
-				start: textDocument.positionAt(m.index),
-				end: textDocument.positionAt(m.index + m[0].length)
-			},
-			message: `${m[0]} is all uppercase.`,
-			source: 'ex'
-		};
-		if (hasDiagnosticRelatedInformationCapability) {
-			diagnostic.relatedInformation = [
-				{
-					location: {
-						uri: textDocument.uri,
-						range: Object.assign({}, diagnostic.range)
-					},
-					message: 'Spelling matters'
-				},
-				{
-					location: {
-						uri: textDocument.uri,
-						range: Object.assign({}, diagnostic.range)
-					},
-					message: 'Particularly for names'
-				}
-			];
-		}
-		diagnostics.push(diagnostic);
-	}
-	return diagnostics;
+  let problems = 0;
+  const diagnostics: Diagnostic[] = [];
+  while ((m = pattern.exec(text)) && problems < settings.maxNumberOfProblems) {
+    problems++;
+    const diagnostic: Diagnostic = {
+      severity: DiagnosticSeverity.Warning,
+      range: {
+        start: textDocument.positionAt(m.index),
+        end: textDocument.positionAt(m.index + m[0].length),
+      },
+      message: `${m[0]} is all uppercase.`,
+      source: "ex",
+    };
+    if (hasDiagnosticRelatedInformationCapability) {
+      diagnostic.relatedInformation = [
+        {
+          location: {
+            uri: textDocument.uri,
+            range: Object.assign({}, diagnostic.range),
+          },
+          message: "Spelling matters",
+        },
+        {
+          location: {
+            uri: textDocument.uri,
+            range: Object.assign({}, diagnostic.range),
+          },
+          message: "Particularly for names",
+        },
+      ];
+    }
+    diagnostics.push(diagnostic);
+  }
+  return diagnostics;
 }
 
-connection.onDidChangeWatchedFiles(_change => {
-	// Monitored files have change in VSCode
-	connection.console.log('We received a file change event');
+connection.onDidChangeWatchedFiles((_change) => {
+  // Monitored files have change in VSCode
+  connection.console.log("We received a file change event");
 });
 
 // This handler provides the initial list of the completion items.
 connection.onCompletion(
-	(_textDocumentPosition: TextDocumentPositionParams): CompletionItem[] => {
-		// The pass parameter contains the position of the text document in
-		// which code complete got requested. For the example we ignore this
-		// info and always provide the same completion items.
-		connection.console.log("Completion requested at:");
-		return [
-			//create list structure
-			{
-				label: 'Yaml',
-				kind: CompletionItemKind.Text,
-				data: 1
-			},
-			{
-				label: 'data',
-				kind: CompletionItemKind.Text,
-				data: 2
-			},
-			{
-				label: 'prompt',
-				kind: CompletionItemKind.Text,
-				data: 3
-			},
-			{
-				label: '# send-to-llm',
-				kind: CompletionItemKind.Text,
-				data: 4
-			}
-		];
-	}
+  (_textDocumentPosition: TextDocumentPositionParams): CompletionItem[] => {
+    // The pass parameter contains the position of the text document in
+    // which code complete got requested. For the example we ignore this
+    // info and always provide the same completion items.
+    connection.console.log("Completion requested at:");
+    return [
+      //create list structure
+      {
+        label: "Yaml",
+        kind: CompletionItemKind.Text,
+        data: 1,
+      },
+      {
+        label: "data",
+        kind: CompletionItemKind.Text,
+        data: 2,
+      },
+      {
+        label: "prompt",
+        kind: CompletionItemKind.Text,
+        data: 3,
+      },
+      {
+        label: "# send-to-llm",
+        kind: CompletionItemKind.Text,
+        data: 4,
+      },
+    ];
+  }
 );
 // This handler resolves additional information for the item selected in
 // the completion list.
-connection.onCompletionResolve(
-	(item: CompletionItem): CompletionItem => {
-		if (item.data === 1) {
-			item.detail = 'Yaml details';
-			item.documentation = "Yaml Docs";
-		}
-		else if (item.data === 2) {
-			item.detail = 'Yaml array list or dict';
-			item.documentation = 'Yaml documentation';
-		}
-		else if (item.data === 3) {
-			item.detail = 'Prompt for llm';
-			item.documentation = 'LLM documention, openrouter etc';
-		}
-		else if (item.data === 4) {
-			item.detail = 'Call to send text to llm';
-		}
-		return item;
-		//when i get the new keywords, i want to append them to here or revise it
-		//and for details i can put the comments or documentation here
-	}
-);
+connection.onCompletionResolve((item: CompletionItem): CompletionItem => {
+  if (item.data === 1) {
+    item.detail = "Yaml details";
+    item.documentation = "Yaml Docs";
+  } else if (item.data === 2) {
+    item.detail = "Yaml array list or dict";
+    item.documentation = "Yaml documentation";
+  } else if (item.data === 3) {
+    item.detail = "Prompt for llm";
+    item.documentation = "LLM documention, openrouter etc";
+  } else if (item.data === 4) {
+    item.detail = "Call to send text to llm";
+  }
+  return item;
+  //when i get the new keywords, i want to append them to here or revise it
+  //and for details i can put the comments or documentation here
+});
 
 // let timeout: NodeJS.Timeout;
 // documents.onDidChangeContent(change => {
@@ -350,12 +437,12 @@ connection.onCompletionResolve(
 // 			connection.console.error("Error parsing YAML:" + error);
 // 		}
 // 	},3000);//if user doesnt type for three seconds, then itll send
-    
+
 // });
 
 // async function sendToLLM(prompt: string, data: string) {
 //     try {
-		
+
 //         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
 //             method: "POST",
 //             headers: {
@@ -363,7 +450,7 @@ connection.onCompletionResolve(
 //                 "Content-Type": "application/json"
 //             },
 //             body: JSON.stringify({
-//                 "model": "deepseek/deepseek-chat-v3-0324:free", // Model 
+//                 "model": "deepseek/deepseek-chat-v3-0324:free", // Model
 //                 "messages": [
 //                     {
 //                         "role": "user",
@@ -374,7 +461,7 @@ connection.onCompletionResolve(
 //         });
 
 //         // Handle the response from the LLM
-		
+
 // 		interface OpenAIResponse {
 // 			choices: {
 // 			  message: {
@@ -383,10 +470,10 @@ connection.onCompletionResolve(
 // 			  };
 // 			}[];
 // 		  }
-		  
+
 //         const result = await response.json() as OpenAIResponse;
 // 		connection.console.log("Prompt: "+prompt);
-//         connection.console.log("LLM Response:"+ JSON.stringify(result, null, 2)); 
+//         connection.console.log("LLM Response:"+ JSON.stringify(result, null, 2));
 //         //connection.console.log("LLM Response:"+ result.choices[0].message.content);
 //     } catch (error) {
 //         connection.console.error("Error sending data to LLM: " + error);
