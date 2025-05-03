@@ -19,6 +19,7 @@ import {
 	type DocumentDiagnosticReport
 } from 'vscode-languageserver/node';
 
+import * as YAML from 'yaml';
 import {
 	TextDocument
 } from 'vscode-languageserver-textdocument';
@@ -134,6 +135,84 @@ connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, 
 	}
 })
 
+const resolveExpression = (expr: string, vars: Record<string, any>): any => {
+	const trimmedExpr = expr.trim();
+	const parts = trimmedExpr.split(/[.\[\]]+/).filter(Boolean);
+	let result: any = undefined;
+  
+	const varName = parts[0];
+	if (!(varName in vars)) {
+		return undefined;
+	}
+  
+	result = vars[varName];
+  
+	for (let i = 1; i < parts.length; i++) {
+	  	const part = parts[i];
+  
+	  	const index = !isNaN(Number(part)) ? Number(part) : part;
+  
+	  	if (result === null || result === undefined) {
+			return undefined;
+	  	}
+  
+	  	result = result[index];
+  
+	  	if (result === undefined) {
+			return undefined;
+	  	}
+	}
+  
+	return result;
+};
+  
+const replacePlaceholders = (obj: any, vars: Record<string, any>): any => {
+	if (typeof obj === "string") {
+	  	return obj.replace(/\${(.*?)}/g, (match, expr) => {
+			const value = resolveExpression(expr, vars);
+			if (value === undefined) {
+		  		throw new Error(`Variable "${expr}" is not defined in context.`);
+			}
+			return value;
+	  });
+	} else if (typeof obj === "object" && obj !== null && !Array.isArray(obj)) {
+	  	for (const key in obj) {
+			if (Object.prototype.hasOwnProperty.call(obj, key)) {
+		  		obj[key] = replacePlaceholders(obj[key], vars);
+			}
+	  	}
+	} else if (Array.isArray(obj)) {
+	  	for (let i = 0; i < obj.length; i++) {
+			obj[i] = replacePlaceholders(obj[i], vars);
+	  	}
+	}
+	return obj;
+};
+  
+connection.onRequest("yaml.replaceVariable", async (params: { uri: string; context: any; text: string }) => {
+	const doc = documents.get(params.uri);
+	if (!doc) {
+		return { success: false, error: "Document not found" };
+	}
+	try {
+		const contextData = params.context;
+		const yamlData = YAML.parse(params.text);
+		// Replace variables in the text using the context data
+		const replacedData = replacePlaceholders(yamlData, contextData);
+		connection.console.log(JSON.stringify(replacedData, null, 2));
+		// Convert the modified YAML object back to a string
+		const yamlString = YAML.stringify(replacedData);
+		connection.console.log(yamlString);
+		// Send the modified YAML string back to the client
+		return {
+		  	success: true,
+		  	modifiedText: yamlString,
+		};
+	} catch (error) {
+		connection.console.error("Error processing YAML: " + error);
+		return { success: false, error: "Error processing YAML" };
+	}
+});
 
 connection.onInitialized(() => {
 	if (hasConfigurationCapability) {
