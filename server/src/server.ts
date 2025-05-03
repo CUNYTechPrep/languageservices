@@ -74,6 +74,22 @@ function parseYamlContent(content: string) {
 	}
 }
 
+function extractSchemaKeywords(schema: any) {
+	const keywords = [];
+	if (schema.properties) {
+		// TODO: await for Matthew's Schema implementation to extract the right important keywords
+		for (const [key, val] of Object.entries(schema.properties)) {
+			keywords.push({
+				key_word: key,
+				value_type: val,
+				appearsInYaml: false
+			});
+		}
+	}
+	return keywords;
+	// it's expected that all of the schema important keywords will show up in the return as an []
+}
+
 connection.onInitialize((params: InitializeParams) => {
 	const capabilities = params.capabilities;
 
@@ -243,6 +259,32 @@ connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, 
 	}
 })
 
+connection.onRequest('llm-schema.extractKeywords', async (params: { schema: any, yamlText?: string }) => {
+	try {
+	  const schemaKeywords = extractSchemaKeywords(params.schema);
+	  
+	  if (params.yamlText) {
+		try {
+		  const parsedYaml = parse(params.yamlText);
+		  
+		  for (let i = 0; i < schemaKeywords.length; i++) {
+			if (parsedYaml.hasOwnProperty(schemaKeywords[i].key_word)) {
+				schemaKeywords[i].appearsInYaml = true;
+			}
+		  }
+		  
+		  connection.console.log(`Compared ${schemaKeywords.length} schema keywords with YAML content`);
+		} catch (error) {
+		  connection.console.warn("Could not parse YAML to compare with schema: " + error);
+		}
+	  }
+	  
+	  return { success: true, keywords: schemaKeywords };
+	} catch (error) {
+	  connection.console.error("Couldn't extract keywords: " + error);
+	  return { success: false, error: "Couldn't extract keywords"};
+	}
+  });
 
 connection.onInitialized(() => {
 	if (hasConfigurationCapability) {
