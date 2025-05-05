@@ -5,6 +5,9 @@
 import {
 	createConnection,
 	TextDocuments,
+	NotificationType,
+	ShowMessageNotification,
+	MessageType,
 	Diagnostic,
 	DiagnosticSeverity,
 	ProposedFeatures,
@@ -19,6 +22,10 @@ import {
 	type DocumentDiagnosticReport
 } from 'vscode-languageserver/node';
 
+import {logger, logErrorToFile, logResponseToFile} from './logger';
+
+import {LLMError, handleLLMError} from './errorHandler';
+
 import {
 	TextDocument
 } from 'vscode-languageserver-textdocument';
@@ -26,7 +33,9 @@ import completions from './completions.json';
 import fs from 'fs';
 import path from 'path';
 
-const OPENROUTER_KEY = process.env.OPENROUTER_KEY;;
+import { parse, stringify } from 'yaml';
+const OPENROUTER_KEY = process.env.OPENROUTER_KEY;
+
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
 const connection = createConnection(ProposedFeatures.all);
@@ -37,6 +46,53 @@ const documents = new TextDocuments(TextDocument);
 let hasConfigurationCapability = false;
 let hasWorkspaceFolderCapability = false;
 let hasDiagnosticRelatedInformationCapability = false;
+
+// helper functions for data-structure parsing
+function parseYamlContent(content: string) {
+	try {
+		const parsedContent = parse(content);
+
+		if (parsedContent.correct === true) {
+			return {
+				parsedContent,
+				isCorrection: true,
+				shouldReplace: true,
+				dataToCorrect: parsedContent.data || ""
+			};
+		}
+
+		const parsedPrompt = parsedContent.prompt;
+		let parsedData = parsedContent.data;
+		if (typeof parsedData === 'string') {
+			parsedData = parsedData.split(/\s+/).map(line => line.trim()).filter(item => item.length > 0);
+		}
+		return {
+			parsedContent,
+			parsedPrompt,
+			parsedData,
+			isCorrection: false
+		};
+	} catch (error) {
+		connection.console.error("Error parsing YAML: " + error);
+		return null;
+	}
+}
+
+function extractSchemaKeywords(schema: any) {
+	const keywords = [];
+	if (schema.properties) {
+		// TODO: await for Matthew's Schema implementation to extract the right important keywords
+		for (const [key, val] of Object.entries(schema.properties)) {
+			keywords.push({
+				key_word: key,
+				value_type: val,
+				appearsInYaml: false
+			});
+		}
+	}
+	return keywords;
+	// it's expected that all of the schema important keywords will show up in the return as an []
+}
 
 connection.onInitialize((params: InitializeParams) => {
 	const capabilities = params.capabilities;
@@ -78,7 +134,15 @@ connection.onInitialize((params: InitializeParams) => {
 	return result;
 });
 
+function notifyClientError(message:string){
+	connection.sendNotification(ShowMessageNotification.type, {
+		type: MessageType.Error,
+		message: message
+	});
+}
+
 connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, range: any, text: string})=>{
+	// use func parseYamlContent() here
 	console.log(params.text);
 	const doc = documents.get(params.uri);
 	if(!doc){
@@ -110,39 +174,92 @@ connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, 
 				]
 			})
 		});
-		interface OpenAIResponse {
-						choices: {
-						  message: {
-							role: string;
-							content: string;
-						  };
-						}[];
-					  }
-		const result = await response.json() as OpenAIResponse;
-		connection.console.log("LLM Prompt:" + `${params.text}\n${llmPrompt}`);
 		
-		connection.console.log("LLM Response:"+ JSON.stringify(result,null,2));
-		//connection.console.log("LLM Response:"+ result.choices[0].message.content);
-		const feedback = result.choices[0].message.content;
-		extractKeywordsFromLLMResponse(feedback);
+		//hanlde error here
+		if (!response.ok){
+			const error = await response.json() as {error:{ message: string, code: string}};
+			console.log(error)
+			throw new LLMError(error.error.code, error.error.message);
+		}
 
-		//const cleanFeedback = feedback.replace(/\n/g, ' ').trim();
-		   
-
-		return {
-			success: true,
-			comment: feedback,
-			position:{
-				line: params.range.start.line +1,
-				character:0
-			}
-		};
+		interface OpenAIResponse {
+			choices: {
+				message?: {
+					role: string;
+					content: string;
+				};
+				error?: {
+					message: string;
+					code: string;
+				};
+			}[];
+		}
+		const result = await response.json() as OpenAIResponse;
+		if (result.choices[0].error) {
+			const error = result.choices[0].error;
+			throw new LLMError(error.code, error.message);
+		}
+		console.log(result);
+		connection.console.log("LLM Prompt:" + contentForLLM);
+		connection.console.log("LLM Response:"+ JSON.stringify(result, null, 2)); 
+		const feedback = result.choices[0]?.message?.content ?? '';
+		logResponseToFile("deepseek/deepseek-chat-v3-0324:free", params.text, result);
+		if (parsedContent.isCorrection && parsedContent.shouldReplace) {
+			return {
+				success: true,
+				replaceSelection: true,
+				replacement: feedback
+			};
+		} else {
+			const cleanFeedback = feedback.replace(/\n/g, ' ').trim();
+			return {
+				success: true,
+				comment: cleanFeedback,
+				position:{
+					line: params.range.start.line +1,
+					character:0
+				}
+			};
+		}
+		
 	} catch (error) {
-		connection.console.error("Error sending data to LLM: " + error);
-		return {success: false, error: 'Error sending data to LLM'};
+		if (error instanceof LLMError){
+			const model = 'deepseek/deepseek-chat-v3-0324:free';
+			logErrorToFile(model, params.text, error)
+			const errorMessage = handleLLMError(error);
+			notifyClientError(errorMessage);
+			notifyClientError(error.message)
+			return {success: false, error: errorMessage}
+		}
 	}
-});
+})
 
+connection.onRequest('llm-schema.extractKeywords', async (params: { schema: any, yamlText?: string }) => {
+	try {
+	  const schemaKeywords = extractSchemaKeywords(params.schema);
+	  
+	  if (params.yamlText) {
+		try {
+		  const parsedYaml = parse(params.yamlText);
+		  
+		  for (let i = 0; i < schemaKeywords.length; i++) {
+			if (parsedYaml.hasOwnProperty(schemaKeywords[i].key_word)) {
+				schemaKeywords[i].appearsInYaml = true;
+			}
+		  }
+		  
+		  connection.console.log(`Compared ${schemaKeywords.length} schema keywords with YAML content`);
+		} catch (error) {
+		  connection.console.warn("Could not parse YAML to compare with schema: " + error);
+		}
+	  }
+	  
+	  return { success: true, keywords: schemaKeywords };
+	} catch (error) {
+	  connection.console.error("Couldn't extract keywords: " + error);
+	  return { success: false, error: "Couldn't extract keywords"};
+	}
+  });
 
 connection.onInitialized(() => {
 	if (hasConfigurationCapability) {
@@ -357,8 +474,8 @@ connection.onCompletionResolve(
 		}*/
 	}
 );
-// Make the text document manager listen on the connection
-// for open, change and close text document events
+
+
 documents.listen(connection);
 
 // Listen on the connection
