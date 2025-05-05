@@ -22,6 +22,10 @@ import {
 import {
 	TextDocument
 } from 'vscode-languageserver-textdocument';
+import completions from './completions.json';
+import fs from 'fs';
+import path from 'path';
+
 const OPENROUTER_KEY = process.env.OPENROUTER_KEY;;
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -76,11 +80,20 @@ connection.onInitialize((params: InitializeParams) => {
 
 connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, range: any, text: string})=>{
 	console.log(params.text);
-	const doc = documents.get(params.uri)
+	const doc = documents.get(params.uri);
 	if(!doc){
-		return {success: false, error: 'Document not found'}
+		return {success: false, error: 'Document not found'};
 	}
 	try{
+		const llmPrompt = `
+				1.Convert the following prompts into a YAML format that uses a pseudo code that you can interpret precisely.
+				2.Evaluate the YAML and write any improvements and extensions.
+				3.Revise the original YAML to include all the improvements and extension you suggested with comments.
+				4.Extract all the keywords used in the YAML specification and list them, explaining how each is to be used.
+				Return prompt 3 and 4 only. Prompt 4 should have the keywords in json format, keywords{word:,explanation:}. Return the json schema to validate the YAML file
+				`.trim();
+				//Key words should soon be returned as well, probably in a list or tuple format. These can be used to to replace the existing ones
+			
 		const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
 			method: "POST",
 			headers:{
@@ -88,11 +101,11 @@ connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, 
 				"Content-Type": "application/json"
 			},
 			body: JSON.stringify({
-				"model": "deepseek/deepseek-chat-v3-0324:free", // Model 
+				"model": "qwen/qwen2.5-vl-3b-instruct:free", // Model chnaged to meta maverick
 				"messages": [
 					{
 						"role": "user",
-						"content": `${params.text}\nAnswer consisely as a code comment for yaml. Answer as short as possible, do not repeat prompt or say if you have any question` // Send prompt and data from YAML` // Send prompt and data from YAML
+						"content": `${params.text}\n${llmPrompt}` // Send prompt and data from YAML` // Send prompt and data from YAML
 					}
 				]
 			})
@@ -105,16 +118,20 @@ connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, 
 						  };
 						}[];
 					  }
-		const result = await response.json() as OpenAIResponse
-		connection.console.log("LLM Prompt:" + `${params.text}\nAnswer consisely as a code comment for yaml. Answer as short as possible, do not repeat prompt or say if you have any question`)
-		connection.console.log("LLM Response:"+ JSON.stringify(result, null, 2)); 
+		const result = await response.json() as OpenAIResponse;
+		connection.console.log("LLM Prompt:" + `${params.text}\n${llmPrompt}`);
+		
+		connection.console.log("LLM Response:"+ JSON.stringify(result,null,2));
+		//connection.console.log("LLM Response:"+ result.choices[0].message.content);
 		const feedback = result.choices[0].message.content;
+		extractKeywordsFromLLMResponse(feedback);
 
-		const cleanFeedback = feedback.replace(/\n/g, ' ').trim();
+		//const cleanFeedback = feedback.replace(/\n/g, ' ').trim();
+		   
 
 		return {
 			success: true,
-			comment: cleanFeedback,
+			comment: feedback,
 			position:{
 				line: params.range.start.line +1,
 				character:0
@@ -122,9 +139,9 @@ connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, 
 		};
 	} catch (error) {
 		connection.console.error("Error sending data to LLM: " + error);
-		return {success: false, error: 'Error sending data to LLM'}
+		return {success: false, error: 'Error sending data to LLM'};
 	}
-})
+});
 
 
 connection.onInitialized(() => {
@@ -261,130 +278,85 @@ connection.onDidChangeWatchedFiles(_change => {
 	// Monitored files have change in VSCode
 	connection.console.log('We received a file change event');
 });
-
+type myCompletionItem = {
+	label: string;
+	data: string;
+	index: number;
+};
 // This handler provides the initial list of the completion items.
+const completionsPath = path.join(__dirname, 'completions.json');
 connection.onCompletion(
 	(_textDocumentPosition: TextDocumentPositionParams): CompletionItem[] => {
 		// The pass parameter contains the position of the text document in
 		// which code complete got requested. For the example we ignore this
 		// info and always provide the same completion items.
-		connection.console.log("Completion requested at:");
-		return [
-			//create list structure
-			{
-				label: 'Yaml',
-				kind: CompletionItemKind.Text,
-				data: 1
-			},
-			{
-				label: 'data',
-				kind: CompletionItemKind.Text,
-				data: 2
-			},
-			{
-				label: 'prompt',
-				kind: CompletionItemKind.Text,
-				data: 3
-			},
+		//connection.console.log("Completion requested at:");
+		const raw = fs.readFileSync(completionsPath, 'utf-8');
+		const completions: myCompletionItem[] = JSON.parse(raw);
+		
+		//connection.console.log(raw);
+		return completions.map(item => ({
+			...item,
+			kind: CompletionItemKind.Text, //injects the type of completion
+			detail: `${item.data}`, // shows inline on select
+		  }));
+		/*return [
 			{
 				label: '# send-to-llm',
-				kind: CompletionItemKind.Text,
-				data: 4
+				data: 1
 			}
-		];
+		];*/
 	}
 );
-// This handler resolves additional information for the item selected in
-// the completion list.
+
+//Overwrites current completions file with the new keywords
+export function addCompletionItems(newItems: myCompletionItem[]) {
+	fs.writeFileSync(completionsPath, JSON.stringify(newItems, null, 2), 'utf-8');
+}
+
+//function to get json from string llm response
+export async function extractKeywordsFromLLMResponse(llmResponse: string) {
+	const jsonMatch = llmResponse.match(/```json\s*([\s\S]*?)\s*```/);
+	if (!jsonMatch) {
+	  throw new Error("No JSON block found in LLM response.");
+	}
+  
+	const jsonString = jsonMatch[1];
+	const parsed = JSON.parse(jsonString);
+  
+	const newItems: myCompletionItem[] = Object.entries(parsed).map(([label, value], index) => ({
+		label,
+		data: typeof value === 'string' ? value : JSON.stringify(value),
+		index: index + 1
+	  }));
+	  const preview = newItems.map(item => `• ${item.label}: ${item.data}`).join('\n');
+	  connection.console.log("Previewing new completions:\n" + preview);
+	
+	  // Ask user to confirm using buttons
+	  const selection = await connection.window.showInformationMessage(
+		"Do you want to update completions with these new items?",
+		{ title: "Yes" },
+		{ title: "No" }
+	  );
+	
+	  if (selection?.title === "Yes") {
+		addCompletionItems(newItems);
+		connection.console.log("✅ Completions updated.");
+	  } else {
+		connection.console.log("❌ Completions update canceled.");
+	  }
+}
+
+//Without this method an error occurs, must have an onCompletionResolve even though Connection.onCompletion takes care of autocomplete
 connection.onCompletionResolve(
 	(item: CompletionItem): CompletionItem => {
-		if (item.data === 1) {
+		return item;
+		/*if (item.data === 1) {
 			item.detail = 'Yaml details';
 			item.documentation = "Yaml Docs";
-		}
-		else if (item.data === 2) {
-			item.detail = 'Yaml array list or dict';
-			item.documentation = 'Yaml documentation';
-		}
-		else if (item.data === 3) {
-			item.detail = 'Prompt for llm';
-			item.documentation = 'LLM documention, openrouter etc';
-		}
-		else if (item.data === 4) {
-			item.detail = 'Call to send text to llm';
-		}
-		return item;
-		//when i get the new keywords, i want to append them to here or revise it
-		//and for details i can put the comments or documentation here
+		}*/
 	}
 );
-
-// let timeout: NodeJS.Timeout;
-// documents.onDidChangeContent(change => {
-// 	clearTimeout(timeout);
-// 	timeout = setTimeout(() =>{
-// 		const text = change.document.getText(); // Get the YAML text
-// 		if (!text.trim().endsWith("# send-to-llm")) {
-// 			connection.console.log("No '# send-to-llm' trigger found at end. Skipping.");
-// 			return;
-// 		}
-// 		try {
-// 			const llmPrompt = `
-// 				Convert the following prompts into a YAML format that uses a pseudo code that you can interpret precisely.
-// 				Evaluate the YAML and write any improvements and extensions.
-// 				Revise the original YAML to include all the improvements and extension you suggested with comments.
-// 				Extract all the keywords used in the YAML specification and list them, explaining how each is to be used.
-// 				Return the revised YAML only.
-// 				`.trim();
-// 				//Key words should soon be returned as well, probably in a list or tuple format. These can be used to to replace the existing ones
-// 			sendToLLM(llmPrompt,text);
-// 		} catch (error) {
-// 			connection.console.error("Error parsing YAML:" + error);
-// 		}
-// 	},3000);//if user doesnt type for three seconds, then itll send
-    
-// });
-
-// async function sendToLLM(prompt: string, data: string) {
-//     try {
-		
-//         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-//             method: "POST",
-//             headers: {
-//                 "Authorization": "Bearer "+OPENROUTER_KEY,
-//                 "Content-Type": "application/json"
-//             },
-//             body: JSON.stringify({
-//                 "model": "deepseek/deepseek-chat-v3-0324:free", // Model 
-//                 "messages": [
-//                     {
-//                         "role": "user",
-//                         "content": `${prompt}\n${data} answer as short as possible, do not repeat prompt or say if you have any question` // Send prompt and data from YAML
-//                     }
-//                 ]
-//             })
-//         });
-
-//         // Handle the response from the LLM
-		
-// 		interface OpenAIResponse {
-// 			choices: {
-// 			  message: {
-// 				role: string;
-// 				content: string;
-// 			  };
-// 			}[];
-// 		  }
-		  
-//         const result = await response.json() as OpenAIResponse;
-// 		connection.console.log("Prompt: "+prompt);
-//         connection.console.log("LLM Response:"+ JSON.stringify(result, null, 2)); 
-//         //connection.console.log("LLM Response:"+ result.choices[0].message.content);
-//     } catch (error) {
-//         connection.console.error("Error sending data to LLM: " + error);
-//     }
-// }
-
 // Make the text document manager listen on the connection
 // for open, change and close text document events
 documents.listen(connection);

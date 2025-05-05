@@ -5,7 +5,7 @@
 
 import * as path from 'path';
 import { workspace, ExtensionContext } from 'vscode';
-import * as vscode from 'vscode'
+import * as vscode from 'vscode';
 import {
 	LanguageClient,
 	LanguageClientOptions,
@@ -64,7 +64,7 @@ export function activate(context: ExtensionContext) {
 		await vscode.window.withProgress({
 			location:vscode.ProgressLocation.Notification,
 			title: "Getting LLM Feedback",
-			cancellable: false
+			cancellable: true
 		}, async () => {
 			try{
 				const response = await client.sendRequest<{
@@ -77,29 +77,33 @@ export function activate(context: ExtensionContext) {
 					text:text
 				});
 				if(response.success && response.comment){
-					console.log(response)
+					console.log(response);
 					await editor.edit(editBuilder => {
-						const line = response.line !== undefined ?
-							response.line :
-							selection.end.line + 1;
-						const position = new vscode.Position(line, 0);
-						const currentLine = editor.document.lineAt(selection.start.line)
-						const indent = currentLine.text.match(/^\s*/)?.[0] || '';
-						const commentText= `\n${indent}//LLM Feedback: ${response.comment}\n`
-						editBuilder.insert(position, commentText);
-					})
+						
+						const commentText= `#LLM Feedback:\n ${response.comment}\n###`;
+						editBuilder.replace(selection,commentText);
+						//const line = response.line !== undefined ?
+						//	response.line :
+						//	selection.end.line + 1;
+						//const position = new vscode.Position(line, 0);
+						//const currentLine = editor.document.lineAt(selection.start.line);
+						//const indent = currentLine.text.match(/^\s*/)?.[0] || '';
+						//const commentText= `\n${indent}#LLM Feedback:\n ${response.comment}\n###`;
+						//editBuilder.insert(position, commentText);
+					});
 				}
 			} catch (error) {
-				vscode.window.showErrorMessage('Error getting LLM feedback: ' + error.message);
+				vscode.window.showErrorMessage('Error getting LLM feedback:' + error.message);
 			}
-		})
-	})
+		});
+	});
 	console.log("Extension activating...");
 	const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
     statusBarItem.text = '$(sparkle) Get LLM Feedback';
     statusBarItem.command = 'extension.getLLMFeedback';
     context.subscriptions.push(
 		vscode.window.onDidChangeActiveTextEditor(editor => {
+			console.log(editor);
 			statusBarItem.show();
 		})
 	);
