@@ -5,7 +5,7 @@ const LOG_DIR = path.resolve(process.cwd(),'logs')
 const LOG_PATH = path.join(LOG_DIR, 'llm_logs.json');
 
 
-const MAX_LOGS = 100;
+const MAX_LOGS = 100	;
 
 interface LLMLog{
 	status:'success' | 'error';
@@ -20,22 +20,34 @@ interface LLMLog{
 class CircularLogger {
 	private logs: LLMLog[] = [];
 
-	constructor(){
+	constructor() {
 		fs.mkdirSync(LOG_DIR, { recursive: true });
-	}
 
-	log(entry: LLMLog){
-		if(this.logs.length >= MAX_LOGS){
-			this.logs.shift(); // Remove the oldest log entry
+		// Initialize from existing file if exists
+		if (fs.existsSync(LOG_PATH)) {
+			const fileContent = fs.readFileSync(LOG_PATH, 'utf-8')
+				.split('\n')
+				.filter(Boolean)
+				.map(line => JSON.parse(line) as LLMLog);
+
+			this.logs = fileContent.slice(-MAX_LOGS); // Only keep latest logs
+			this.flushAll(); // Rewrite file to clean up
 		}
-		this.logs.push(entry); // Add the new log entry
-		this.flush(entry);
 	}
 
-	private flush(entry: LLMLog){
-		try{
-			fs.appendFileSync(LOG_PATH, JSON.stringify(entry) + '\n', 'utf-8');
-		} catch(err){
+	log(entry: LLMLog) {
+		if (this.logs.length >= MAX_LOGS) {
+			this.logs.shift();
+		}
+		this.logs.push(entry);
+		this.flushAll();
+	}
+
+	private flushAll() {
+		try {
+			const content = this.logs.map(log => JSON.stringify(log)).join('\n');
+			fs.writeFileSync(LOG_PATH, content, 'utf-8');
+		} catch (err) {
 			console.error('Error writing to log file:', err);
 		}
 	}
