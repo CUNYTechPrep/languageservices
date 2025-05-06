@@ -30,7 +30,6 @@ import {logger, logErrorToFile, logResponseToFile} from './logger';
 
 import {LLMError, handleLLMError} from './errorHandler';
 
-import * as YAML from 'yaml';
 import {
 	TextDocument
 } from 'vscode-languageserver-textdocument';
