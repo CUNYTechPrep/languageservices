@@ -5,7 +5,7 @@ const LOG_DIR = path.resolve(process.cwd(),'logs')
 const LOG_PATH = path.join(LOG_DIR, 'llm_logs.json');
 
 
-const MAX_LOGS = 100	;
+const MAX_LOGS = 100;
 
 interface LLMLog{
 	status:'success' | 'error';

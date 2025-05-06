@@ -199,7 +199,7 @@ connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, 
 				]
 			})
 		});
-		
+
 		//hanlde error here
 		if (!response.ok){
 			const error = await response.json() as {error:{ message: string, code: string}};
