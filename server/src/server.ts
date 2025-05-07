@@ -30,7 +30,7 @@ import {
 	TextDocument
 } from 'vscode-languageserver-textdocument';
 import { parse, stringify } from 'yaml';
-const OPENROUTER_KEY = process.env.OPENROUTER;
+const OPENROUTER_KEY = process.env.OPENROUTER_KEY;
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
