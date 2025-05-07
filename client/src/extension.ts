@@ -49,7 +49,50 @@ export function activate(context: ExtensionContext) {
 		serverOptions,
 		clientOptions
 	);
-	const feedbackCommand = vscode.commands.registerCommand('extension.getLLMFeedback', async () =>{
+
+	// status bars for each keyword for script
+	const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
+	statusBarItem.text = '$(sparkle) Get LLM Feedback';
+	statusBarItem.command = 'extension.getLLMFeedback';
+
+	const schemaButton = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 999);
+	schemaButton.text = "$(symbol-keyword) Schema-based Querying";
+	schemaButton.command = 'extension.sendSchemaKeywordsToLLM';
+
+	const actionsButton = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 998);
+	actionsButton.text = "$(play) Execute YAML Actions";
+	actionsButton.command = 'extension.executeYamlActions';
+
+	const replaceVariableStatusBarItem = vscode.window.createStatusBarItem(
+		vscode.StatusBarAlignment.Right,
+		2000
+	);
+	replaceVariableStatusBarItem.text = "$(sparkle) Replace Variable";
+	replaceVariableStatusBarItem.command = "extension.replaceVariable";
+
+	const loadJSONContextFile = (): Record<string, any> => {
+		const workspaceFolders = vscode.workspace.workspaceFolders;
+		if (!workspaceFolders) {
+			return {};
+		}
+
+		const contextFilePath = path.join(workspaceFolders[0].uri.fsPath, "context.json");
+
+		if (!fs.existsSync(contextFilePath)) {
+			return {};
+		}
+
+		try {
+			const data = fs.readFileSync(contextFilePath, "utf8");
+			return JSON.parse(data);
+		} catch (error) {
+			console.error("Error reading context.json:", error);
+			vscode.window.showErrorMessage("Error reading context.json: " + error.message);
+			return {};
+		}
+	};
+
+	const feedbackCommand = vscode.commands.registerCommand('extension.getLLMFeedback', async () => {
 		const editor = vscode.window.activeTextEditor;
 		if (!editor) {
 			vscode.window.showErrorMessage('No active editor found.');
@@ -63,11 +106,11 @@ export function activate(context: ExtensionContext) {
 		}
 
 		await vscode.window.withProgress({
-			location:vscode.ProgressLocation.Notification,
+			location: vscode.ProgressLocation.Notification,
 			title: "Getting LLM Feedback",
 			cancellable: false
 		}, async () => {
-			try{
+			try {
 				const response = await client.sendRequest<{
 					success: boolean;
 					comment?: string;
@@ -77,10 +120,10 @@ export function activate(context: ExtensionContext) {
 						line: number;
 						character: number;
 					};
-				}>('llm-feedback.insertComment',{
+				}>('llm-feedback.insertComment', {
 					uri: editor.document.uri.toString(),
-					range:selection,
-					text:text
+					range: selection,
+					text: text
 				});
 				console.log(response)
 				if (response.success) {
@@ -91,12 +134,12 @@ export function activate(context: ExtensionContext) {
 					} else if (response.comment) {
 						await editor.edit(editBuilder => {
 							const line = response.position !== undefined ?
-							response.position.line :
-							selection.end.line + 1;
+								response.position.line :
+								selection.end.line + 1;
 							const position = new vscode.Position(line, 0);
 							const currentLine = editor.document.lineAt(selection.start.line)
 							const indent = currentLine.text.match(/^\s*/)?.[0] || '';
-							const commentText= `\n${indent}# LLM Feedback: ${response.comment}\n`
+							const commentText = `\n${indent}# LLM Feedback: ${response.comment}\n`
 							editBuilder.insert(position, commentText);
 						});
 					}
@@ -132,7 +175,7 @@ export function activate(context: ExtensionContext) {
 			}
 			const response = await client.sendRequest<{
 				success: boolean;
-				keywords?: Array<{key_word: string, value_type: any, appearsInYaml?: boolean}>;
+				keywords?: Array<{ key_word: string, value_type: any, appearsInYaml?: boolean }>;
 				error?: string;
 			}>('llm-schema.extractKeywords', {
 				schema: placeholderSchema,
@@ -141,40 +184,18 @@ export function activate(context: ExtensionContext) {
 			if (response.success) {
 				const usedKeywords = response.keywords.filter(k => k.appearsInYaml).length;
 				vscode.window.showInformationMessage(
-				  `Extracted ${usedKeywords} total keywords from JSON schema`
+					`Extracted ${usedKeywords} total keywords from JSON schema`
 				);
-				
+
 				console.log("Keywords:", response.keywords);
-			  } else {
+			} else {
 				vscode.window.showErrorMessage("Failed to extract keywords");
-			  }
+			}
 		} catch (error) {
 			vscode.window.showErrorMessage(`Error: ${error.message}`);
 		}
 	});
 
-	const loadJSONContextFile = (): Record<string, any> => {
-		const workspaceFolders = vscode.workspace.workspaceFolders;
-		if (!workspaceFolders) {
-			return {};
-		}
-	
-		const contextFilePath = path.join(workspaceFolders[0].uri.fsPath,"context.json");
-	
-		if (!fs.existsSync(contextFilePath)) {
-			return {};
-		}
-	
-		try {
-		  	const data = fs.readFileSync(contextFilePath, "utf8");
-		  	return JSON.parse(data);
-		} catch (error) {
-		  	console.error("Error reading context.json:", error);
-		  	vscode.window.showErrorMessage("Error reading context.json: " + error.message);
-		  	return {};
-		}
-	};
-	
 	const replaceVariableCommand = vscode.commands.registerCommand("extension.replaceVariable", async () => {
 		const editor = vscode.window.activeTextEditor;
 		if (!editor) {
@@ -183,12 +204,12 @@ export function activate(context: ExtensionContext) {
 		}
 		const text = editor.document.getText();
 		const context = loadJSONContextFile();
-	
+
 		if (!text) {
 			vscode.window.showErrorMessage("No text in file.");
 			return;
 		}
-	
+
 		await vscode.window.withProgress({
 			location: vscode.ProgressLocation.Notification,
 			title: "Replacing Variable",
@@ -197,22 +218,22 @@ export function activate(context: ExtensionContext) {
 			try {
 				const response = await client.sendRequest<{
 					success: boolean;
-				  	modifiedText?: string;
-				  	error?: string;
+					modifiedText?: string;
+					error?: string;
 				}>("yaml.replaceVariable", {
-				  	uri: editor.document.uri.toString(),
-				  	text: text,
-				  	context: context,
+					uri: editor.document.uri.toString(),
+					text: text,
+					context: context,
 				});
 
 				if (response.success && response.modifiedText) {
-				  	console.log("🔁 Full replaced YAML content:\n", response.modifiedText);
-				  	vscode.window.showInformationMessage("Full YAML replacement logged to console.");
+					console.log("🔁 Full replaced YAML content:\n", response.modifiedText);
+					vscode.window.showInformationMessage("Full YAML replacement logged to console.");
 				} else if (response.error) {
-				  	console.error("Error in response:", response.error);
-				  	vscode.window.showErrorMessage("Error replacing variable: " + response.error);
+					console.error("Error in response:", response.error);
+					vscode.window.showErrorMessage("Error replacing variable: " + response.error);
 				} else {
-				  	vscode.window.showWarningMessage("No replacement text returned.");
+					vscode.window.showWarningMessage("No replacement text returned.");
 				}
 			} catch (error) {
 				vscode.window.showErrorMessage("Error replacing variable: " + error.message);
@@ -220,33 +241,115 @@ export function activate(context: ExtensionContext) {
 		});
 	});
 
+	// connect executeYamlActions (scripting)
+	const executeYamlActionsCommand = vscode.commands.registerCommand('extension.executeYamlActions', async () => {
+		const editor = vscode.window.activeTextEditor;
+		if (!editor) {
+			vscode.window.showErrorMessage('No active editor found.');
+			return;
+		}
+		let yamlText;
+		const selection = editor.selection;
+		if (selection && !selection.isEmpty) {
+			yamlText = editor.document.getText(selection);
+		} else {
+			yamlText = editor.document.getText();
+		}
+
+		if (!yamlText) {
+			vscode.window.showErrorMessage('No YAML content found.');
+			return;
+		}
+
+		await vscode.window.withProgress({
+			location: vscode.ProgressLocation.Notification,
+			title: "Executing YAML Actions",
+			cancellable: true
+		}, async (progress, token) => {
+			try {
+				const response = await client.sendRequest<{
+					success: boolean;
+					results?: any[];
+					llmResult?: string;
+					correctedData?: string;
+					context?: any;
+					error?: string;
+				}>('yaml-actions.execute', {
+					yamlText: yamlText
+				});
+
+				if (response.success) {
+					const outputChannel = vscode.window.createOutputChannel("YAML Actions");
+					outputChannel.clear();
+					outputChannel.appendLine("YAML Action Results:");
+					outputChannel.appendLine(JSON.stringify(response.results, null, 2));
+
+					if (response.llmResult) {
+						await editor.edit(editBuilder => {
+							const position = editor.document.lineAt(
+								editor.document.lineCount - 1
+							).range.end;
+							const resultText = `\n\n# Action Result:\n# ${response.llmResult}\n`;
+							editBuilder.insert(position, resultText);
+						});
+
+						vscode.window.showInformationMessage("YAML actions executed successfully");
+						outputChannel.appendLine("\nLLM Result:");
+						outputChannel.appendLine(response.llmResult);
+					} else {
+						vscode.window.showInformationMessage("YAML actions executed (no LLM result)");
+					}
+
+					outputChannel.show();
+				} else {
+					vscode.window.showErrorMessage("Failed to execute YAML actions: " +
+						(response.error || "Unknown error"));
+				}
+			} catch (error) {
+				vscode.window.showErrorMessage(`Error executing YAML actions: ${error.message}`);
+			}
+		});
+	});
+	actionsButton.text = "$(play) Execute YAML Actions";
+	actionsButton.command = 'extension.executeYamlActions';
+	actionsButton.show();
+
+	statusBarItem.show();
+	schemaButton.show();
+	actionsButton.show();
+	replaceVariableStatusBarItem.show();
+
+	context.subscriptions.push(
+		vscode.window.onDidChangeActiveTextEditor(editor => {
+			if (editor) {
+				statusBarItem.show();
+			}
+		})
+	);
+
+	context.subscriptions.push(
+		client,
+		feedbackCommand,
+		sendSchemaKeywordsCommand,
+		replaceVariableCommand,
+		executeYamlActionsCommand,
+		statusBarItem,
+		schemaButton,
+		actionsButton,
+		replaceVariableStatusBarItem
+	  );
+
 	console.log("Extension activating...");
-	const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
-    statusBarItem.text = '$(sparkle) Get LLM Feedback';
-    statusBarItem.command = 'extension.getLLMFeedback';
-    context.subscriptions.push(
+	context.subscriptions.push(
 		vscode.window.onDidChangeActiveTextEditor(editor => {
 			statusBarItem.show();
 		})
 	);
-    console.log("Status bar item created"); // Confirm this logs
+	console.log("Status bar item created"); // Confirm this logs
 
-	const schemaButton = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 999);
-	schemaButton.text = "$(symbol-keyword) Schema-based Querying";
-	schemaButton.command = 'extension.sendSchemaKeywordsToLLM';
 	schemaButton.show();
 	context.subscriptions.push(schemaButton);
 
-	context.subscriptions.push(
-		client,feedbackCommand, statusBarItem
-	);
-
-	const replaceVariableStatusBarItem = vscode.window.createStatusBarItem(
-		vscode.StatusBarAlignment.Right, 
-		2000
-	);
-	replaceVariableStatusBarItem.text = "$(sparkle) Replace Variable";
-	replaceVariableStatusBarItem.command = "extension.replaceVariable";
 	replaceVariableStatusBarItem.show();
 	context.subscriptions.push(replaceVariableStatusBarItem);
 
