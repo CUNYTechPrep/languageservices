@@ -21,3 +21,4 @@ export function handleLLMError(error: LLMError): string {
 	const suggestion = LLM_ERRORS_SUGGESTIONS[error.code] || "Please check the server logs for more details.";
 	return `Suggestion: ${suggestion}`;
 }
+
