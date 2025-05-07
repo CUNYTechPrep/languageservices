@@ -175,7 +175,6 @@ connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, 
 			contentForLLM = `
 			I have the following YAML text:
 			${params.text}
-	
 			Parsed YAML text here:
 			prompt: ${parsedContent.parsedPrompt}
 			data: ${JSON.stringify(parsedContent.parsedData)}
@@ -191,6 +190,7 @@ connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, 
 			},
 			body: JSON.stringify({
 				"model": "deepseek/deepseek-chat-v3-0324:free", // Model 
+				"models": ["shisa-ai/shisa-v2-llama3.3-70b:free","qwen/qwen3-32b:free"], //Backup models for OpenRouter server
 				"messages": [
 					{
 						"role": "user",
@@ -199,7 +199,7 @@ connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, 
 				]
 			})
 		});
-		
+
 		//hanlde error here
 		if (!response.ok){
 			const error = await response.json() as {error:{ message: string, code: string}};
@@ -228,7 +228,7 @@ connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, 
 		connection.console.log("LLM Prompt:" + contentForLLM);
 		connection.console.log("LLM Response:"+ JSON.stringify(result, null, 2)); 
 		const feedback = result.choices[0]?.message?.content ?? '';
-		logResponseToFile("deepseek/deepseek-chat-v3-0324:free", params.text, result);
+		logResponseToFile(params.text, result);
 		if (parsedContent.isCorrection && parsedContent.shouldReplace) {
 			return {
 				success: true,
@@ -249,8 +249,7 @@ connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, 
 		
 	} catch (error) {
 		if (error instanceof LLMError){
-			const model = 'deepseek/deepseek-chat-v3-0324:free';
-			logErrorToFile(model, params.text, error)
+			logErrorToFile(params.text, error)
 			const errorMessage = handleLLMError(error);
 			notifyClientError(errorMessage);
 			notifyClientError(error.message)
