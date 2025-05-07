@@ -19,5 +19,5 @@ const LLM_ERRORS_SUGGESTIONS: Record<string, string> = {
 
 export function handleLLMError(error: LLMError): string {
 	const suggestion = LLM_ERRORS_SUGGESTIONS[error.code] || "Please check the server logs for more details.";
-	return `Error: ${error.message}. Suggestion: ${suggestion}`;
+	return `Suggestion: ${suggestion}`;
 }
