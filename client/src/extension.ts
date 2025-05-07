@@ -245,25 +245,20 @@ export function activate(context: ExtensionContext) {
 	const executeYamlActionsCommand = vscode.commands.registerCommand('extension.executeYamlActions', async () => {
 		const editor = vscode.window.activeTextEditor;
 		if (!editor) {
-			vscode.window.showErrorMessage('No active editor found.');
+			vscode.window.showErrorMessage('No editor found');
 			return;
 		}
-		let yamlText;
-		const selection = editor.selection;
-		if (selection && !selection.isEmpty) {
-			yamlText = editor.document.getText(selection);
-		} else {
-			yamlText = editor.document.getText();
-		}
-
+		
+		const yamlText = editor.document.getText();
+		
 		if (!yamlText) {
-			vscode.window.showErrorMessage('No YAML content found.');
+			vscode.window.showErrorMessage('Couldnt get YAML content. Ensure this is a .yaml file perhaps.');
 			return;
 		}
-
+	
 		await vscode.window.withProgress({
 			location: vscode.ProgressLocation.Notification,
-			title: "Executing YAML Actions",
+			title: "Executing actions",
 			cancellable: true
 		}, async (progress, token) => {
 			try {
@@ -277,29 +272,62 @@ export function activate(context: ExtensionContext) {
 				}>('yaml-actions.execute', {
 					yamlText: yamlText
 				});
-
+	
 				if (response.success) {
 					const outputChannel = vscode.window.createOutputChannel("YAML Actions");
 					outputChannel.clear();
 					outputChannel.appendLine("YAML Action Results:");
 					outputChannel.appendLine(JSON.stringify(response.results, null, 2));
-
-					if (response.llmResult) {
+					
+					const correctionResult = response.results?.find(r => r.key === 'correct' && r.result.corrected);
+					
+					if (correctionResult) {
+						let parsedYaml;
+						try {
+							// parse and then update:
+							const jsYaml = require('yaml');
+							parsedYaml = jsYaml.parse(yamlText);
+							
+							parsedYaml.data = correctionResult.result.corrected.replace(/^`|`$/g, ''); // Remove backticks if present
+							
+							const updatedYaml = jsYaml.stringify(parsedYaml);
+							
+							// replace entire document with new edit
+							await editor.edit(editBuilder => {
+								const fullRange = new vscode.Range(
+									new vscode.Position(0, 0),
+									new vscode.Position(editor.document.lineCount - 1, editor.document.lineAt(editor.document.lineCount - 1).text.length)
+								);
+								editBuilder.replace(fullRange, updatedYaml);
+							});
+							
+							vscode.window.showInformationMessage("Data corrected successfully");
+						} catch (error) {
+							console.error("Error parsing or updating YAML:", error);
+							// failsafe method
+							await editor.edit(editBuilder => {
+								const position = editor.document.lineAt(
+									editor.document.lineCount - 1
+								).range.end;
+								const commentText = "\n\n# Correction Result (couldn't automatically update):\n# " + 
+									correctionResult.result.corrected.replace(/\n/g, '\n# ');
+								editBuilder.insert(position, commentText);
+							});
+						}
+					} else if (response.llmResult) {
+						// not a correction, go to LLM result commenting
 						await editor.edit(editBuilder => {
 							const position = editor.document.lineAt(
 								editor.document.lineCount - 1
 							).range.end;
-							const resultText = `\n\n# Action Result:\n# ${response.llmResult}\n`;
-							editBuilder.insert(position, resultText);
+							const commentText = "\n\n# LLM Result:\n# " + 
+								response.llmResult.replace(/\n/g, '\n# ');
+							editBuilder.insert(position, commentText);
 						});
-
+						
 						vscode.window.showInformationMessage("YAML actions executed successfully");
-						outputChannel.appendLine("\nLLM Result:");
-						outputChannel.appendLine(response.llmResult);
-					} else {
-						vscode.window.showInformationMessage("YAML actions executed (no LLM result)");
 					}
-
+					
 					outputChannel.show();
 				} else {
 					vscode.window.showErrorMessage("Failed to execute YAML actions: " +
