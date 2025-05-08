@@ -43,6 +43,8 @@ let hasConfigurationCapability = false;
 let hasWorkspaceFolderCapability = false;
 let hasDiagnosticRelatedInformationCapability = false;
 
+let loadedVariables: Record<string, any>;
+
 // helper functions for data-structure parsing
 function parseYamlContent(content: string) {
 	try {
@@ -496,7 +498,17 @@ async function validateTextDocument(textDocument: TextDocument): Promise<Diagnos
 
 connection.onDidChangeWatchedFiles(_change => {
 	// Monitored files have change in VSCode
-	connection.console.log('We received a file change event');
+	connection.console.log('We received a file change event: ' + JSON.stringify(_change));
+
+	const changes = _change.changes; // List of FileEvent objects
+	connection.console.log('File changes: ' + JSON.stringify(changes));
+
+	for (const change of changes) {
+		if ((change.type == 1 || change.type === 2) && change.uri.endsWith('context.json')) {
+			connection.console.log("FOund u")
+			// TODO: handle the changes to the context.json file
+		}
+	}
 });
 
 // This handler provides the initial list of the completion items.
