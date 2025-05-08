@@ -346,17 +346,17 @@ const replacePlaceholders = (obj: any, vars: Record<string, any>): any => {
 	return obj;
 };
   
-connection.onRequest("yaml.replaceVariable", async (params: { uri: string; context: any; text: string }) => {
+connection.onRequest("yaml.replaceVariable", async (params: { uri: string; text: string }) => {
 	const doc = documents.get(params.uri);
 	if (!doc) {
 		return { success: false, error: "Document not found" };
 	}
 	try {
-		const contextData = params.context;
+		// const contextData = params.context;
 		const yamlData = parse(params.text);
 		// Replace variables in the text using the context data
-		const replacedData = replacePlaceholders(yamlData, contextData);
-		connection.console.log(JSON.stringify(replacedData, null, 2));
+		const replacedData = replacePlaceholders(yamlData, loadedVariables);
+		//connection.console.log(JSON.stringify(replacedData, null, 2));
 		// Convert the modified YAML object back to a string
 		const yamlString = stringify(replacedData);
 		connection.console.log(yamlString);
@@ -371,7 +371,7 @@ connection.onRequest("yaml.replaceVariable", async (params: { uri: string; conte
 	}
 });
 
-connection.onInitialized(() => {
+connection.onInitialized( async () => {
 	if (hasConfigurationCapability) {
 		// Register for all configuration changes.
 		connection.client.register(DidChangeConfigurationNotification.type, undefined);
@@ -380,6 +380,34 @@ connection.onInitialized(() => {
 		connection.workspace.onDidChangeWorkspaceFolders(_event => {
 			connection.console.log('Workspace folder change event received.');
 		});
+
+		const workspaceFolders = await connection.workspace.getWorkspaceFolders();
+		if (workspaceFolders && workspaceFolders.length > 0) {
+			const folderUri = workspaceFolders[0].uri;
+			connection.console.log(`Workspace folder URI: ${folderUri}`);
+			const folderPath = url.fileURLToPath(folderUri);
+			connection.console.log(`Workspace folder path: ${folderPath}`);
+
+			try {
+				const files = fs.readdirSync(folderPath);
+				connection.console.log(`Files in workspace folder: ${files.join(', ')}`);
+				const varsFiles = files.filter(file => file.endsWith('.vars.yaml'));
+
+				if (varsFiles.length > 0) {
+					const firstMatchPath = path.join(folderPath, varsFiles[0]);
+					const fileContent = fs.readFileSync(firstMatchPath, 'utf8');
+					loadedVariables = parse(fileContent) as Record<string, any>;
+					connection.console.log(`${varsFiles[0]} loaded successfully.`);
+				} else {
+					loadedVariables = {};
+					connection.console.log('No *.vars.yaml file found. Using default context.');
+				}
+			} catch (error) {
+				loadedVariables = {};
+				connection.console.error(`Error loading *.vars.yaml file: ${error}`);
+			}
+		}
+		
 	}
 });
 

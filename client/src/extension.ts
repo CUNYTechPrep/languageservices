@@ -185,7 +185,7 @@ export function activate(context: ExtensionContext) {
 			return;
 		}
 		const text = editor.document.getText();
-		const context = loadJSONContextFile();
+		// const context = loadJSONContextFile();
 	
 		if (!text) {
 			vscode.window.showErrorMessage("No text in file.");
@@ -205,7 +205,6 @@ export function activate(context: ExtensionContext) {
 				}>("yaml.replaceVariable", {
 				  	uri: editor.document.uri.toString(),
 				  	text: text,
-				  	context: context,
 				});
 
 				if (response.success && response.modifiedText) {
