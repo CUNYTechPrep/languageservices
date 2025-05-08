@@ -30,6 +30,11 @@ import {
 	TextDocument
 } from 'vscode-languageserver-textdocument';
 import { parse, stringify } from 'yaml';
+
+import * as fs from 'fs';
+import * as url from 'url';
+import * as path from 'path';
+
 const OPENROUTER_KEY = process.env.OPENROUTER_KEY;
 
 // Create a connection for the server, using Node's IPC as a transport.
@@ -43,7 +48,7 @@ let hasConfigurationCapability = false;
 let hasWorkspaceFolderCapability = false;
 let hasDiagnosticRelatedInformationCapability = false;
 
-let loadedVariables: Record<string, any>;
+let loadedVariables: Record<string, any> = {};
 
 // helper functions for data-structure parsing
 function parseYamlContent(content: string) {
@@ -497,16 +502,26 @@ async function validateTextDocument(textDocument: TextDocument): Promise<Diagnos
 }
 
 connection.onDidChangeWatchedFiles(_change => {
-	// Monitored files have change in VSCode
-	connection.console.log('We received a file change event: ' + JSON.stringify(_change));
-
 	const changes = _change.changes; // List of FileEvent objects
 	connection.console.log('File changes: ' + JSON.stringify(changes));
 
 	for (const change of changes) {
-		if ((change.type == 1 || change.type === 2) && change.uri.endsWith('context.json')) {
-			connection.console.log("FOund u")
-			// TODO: handle the changes to the context.json file
+		if ((change.type == 1 || change.type === 2) && change.uri.endsWith('.vars.yaml')) {
+			connection.console.log("Found .vars.yaml change");
+
+            try {
+                // Convert URI to file path
+                const filePath = url.fileURLToPath(change.uri);
+
+                // Read the file
+                const fileContent = fs.readFileSync(filePath, 'utf8');
+                const jsonData = parse(fileContent);
+
+                loadedVariables = jsonData; // Store the loaded variables in a global variable for now
+				connection.console.log("Loaded variables: " + JSON.stringify(loadedVariables, null, 2));
+            } catch (error) {
+                connection.console.error(`Failed to process context.json: ${error}`);
+            }
 		}
 	}
 });

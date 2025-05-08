@@ -40,7 +40,7 @@ export function activate(context: ExtensionContext) {
 			// Notify the server about file changes to '.clientrc files contained in the workspace
 			fileEvents: [
 				workspace.createFileSystemWatcher('**/.clientrc'),
-				workspace.createFileSystemWatcher('**/context.json'),
+				workspace.createFileSystemWatcher('**/*.vars.yaml'),
 			],
 		}
 	};
