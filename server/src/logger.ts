@@ -22,11 +22,25 @@ interface LLMLog{
 // CircularLogger class to manage log entries
 class CircularLogger {
 	private logs: LLMLog[] = [];
-	private writeCount = 0; // Counter to track the number of writes
+	private enabled = true;
 
-	constructor() {	
-		// Ensure the log directory exists	
-		fs.mkdirSync(LOG_DIR, { recursive: true });
+	constructor(){
+		this.init().catch(err=>{
+			console.error('looger init error:', err);
+		})
+	}
+
+
+	private async init() {	
+		try{
+			// Ensure the log directory exists	
+			await fs.mkdirSync(LOG_DIR, { recursive: true });
+			await fs.promises.access(LOG_DIR, fs.constants.W_OK);
+		} catch (err) {
+			console.warn('[logger] Log directory is not writable. Logging is disabled.');
+			this.enabled = false;
+			return;
+		}
 
 		// Initialize from existing file if exists
 		if (fs.existsSync(LOG_PATH)) {
@@ -50,12 +64,14 @@ class CircularLogger {
 
 	//Add a new log entry
 	log(entry: LLMLog) {
+		if (!this.enabled) {
+			return;
+		}
 		// Add the new log entry to the logs array
 		this.logs.push(entry);
 		// Write the new log entry to the file
 		try{
 			fs.appendFileSync(LOG_PATH, JSON.stringify(entry) + '\n', 'utf-8');
-			this.writeCount++;
 		}catch (err) {
 			console.error('Error writing to log file:', err);
 		}
