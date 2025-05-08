@@ -292,36 +292,34 @@ connection.onRequest('llm-schema.extractKeywords', async (params: { schema: any,
 	}
   });
 
-  const resolveExpression = (expr: string, vars: Record<string, any>): any => {
-	const trimmedExpr = expr.trim();
-	const parts = trimmedExpr.split(/[.\[\]]+/).filter(Boolean);
-	let result: any = undefined;
-  
-	const varName = parts[0];
-	if (!(varName in vars)) {
-		return undefined;
+// Parse expression like 'a.b[0].c' into path array: ['a', 'b', '0', 'c']
+export function parseExpression(expr: string): string[] {
+	return expr.trim().split(/[.\[\]]+/).filter(Boolean);
+}
+
+// Get value at a path inside an object
+export function getValueByPath(obj: any, path: string[]): any {
+	let result = obj;
+	for (const key of path) {
+		if (result == null) return undefined;
+
+		// Support numeric keys (e.g., arrays)
+		const index = !isNaN(Number(key)) ? Number(key) : key;
+		result = result[index];
+
+		if (result === undefined) return undefined;
 	}
-  
-	result = vars[varName];
-  
-	for (let i = 1; i < parts.length; i++) {
-	  	const part = parts[i];
-  
-	  	const index = !isNaN(Number(part)) ? Number(part) : part;
-  
-	  	if (result === null || result === undefined) {
-			return undefined;
-	  	}
-  
-	  	result = result[index];
-  
-	  	if (result === undefined) {
-			return undefined;
-	  	}
-	}
-  
 	return result;
-};
+}
+
+// Resolve expression like 'patient.name' or 'medications[0].name'
+export function resolveExpression(expr: string, vars: Record<string, any>): any {
+	const path = parseExpression(expr);
+	if (path.length === 0 || !(path[0] in vars)) return undefined;
+
+	const root = vars[path[0]];
+	return getValueByPath(root, path.slice(1));
+}
   
 const replacePlaceholders = (obj: any, vars: Record<string, any>): any => {
 	if (typeof obj === "string") {
@@ -526,6 +524,28 @@ async function validateTextDocument(textDocument: TextDocument): Promise<Diagnos
 		}
 		diagnostics.push(diagnostic);
 	}
+
+	// 2. Check for undefined variables in ${...}
+	const varPattern = /\${(.*?)}/g;
+	while ((m = varPattern.exec(text)) && problems < settings.maxNumberOfProblems) {
+		const varExpr = m[1].trim();
+		const path = parseExpression(varExpr);
+		const exists = path.length > 0 && getValueByPath(loadedVariables[path[0]], path.slice(1)) !== undefined;
+
+		if (!exists) {
+			problems++;
+			diagnostics.push({
+				severity: DiagnosticSeverity.Warning,
+				range: {
+					start: textDocument.positionAt(m.index),
+					end: textDocument.positionAt(m.index + m[0].length)
+				},
+				message: `Variable "${varExpr}" is not defined in context.`,
+				source: 'vars'
+			});
+		}
+	}
+
 	return diagnostics;
 }
 
