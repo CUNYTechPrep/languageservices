@@ -35,6 +35,8 @@ import * as fs from 'fs';
 import * as url from 'url';
 import * as path from 'path';
 
+import { resolveExpression, replacePlaceholders  } from './expressions';
+
 const OPENROUTER_KEY = process.env.OPENROUTER_KEY;
 
 // Create a connection for the server, using Node's IPC as a transport.
@@ -291,58 +293,6 @@ connection.onRequest('llm-schema.extractKeywords', async (params: { schema: any,
 	  return { success: false, error: "Couldn't extract keywords"};
 	}
   });
-
-// Parse expression like 'a.b[0].c' into path array: ['a', 'b', '0', 'c']
-export function parseExpression(expr: string): string[] {
-	return expr.trim().split(/[.\[\]]+/).filter(Boolean);
-}
-
-// Get value at a path inside an object
-export function getValueByPath(obj: any, path: string[]): any {
-	let result = obj;
-	for (const key of path) {
-		if (result == null) return undefined;
-
-		// Support numeric keys (e.g., arrays)
-		const index = !isNaN(Number(key)) ? Number(key) : key;
-		result = result[index];
-
-		if (result === undefined) return undefined;
-	}
-	return result;
-}
-
-// Resolve expression like 'patient.name' or 'medications[0].name'
-export function resolveExpression(expr: string, vars: Record<string, any>): any {
-	const path = parseExpression(expr);
-	if (path.length === 0 || !(path[0] in vars)) return undefined;
-
-	const root = vars[path[0]];
-	return getValueByPath(root, path.slice(1));
-}
-  
-const replacePlaceholders = (obj: any, vars: Record<string, any>): any => {
-	if (typeof obj === "string") {
-	  	return obj.replace(/\${(.*?)}/g, (match, expr) => {
-			const value = resolveExpression(expr, vars);
-			if (value === undefined) {
-		  		throw new Error(`Variable "${expr}" is not defined in context.`);
-			}
-			return value;
-	  });
-	} else if (typeof obj === "object" && obj !== null && !Array.isArray(obj)) {
-	  	for (const key in obj) {
-			if (Object.prototype.hasOwnProperty.call(obj, key)) {
-		  		obj[key] = replacePlaceholders(obj[key], vars);
-			}
-	  	}
-	} else if (Array.isArray(obj)) {
-	  	for (let i = 0; i < obj.length; i++) {
-			obj[i] = replacePlaceholders(obj[i], vars);
-	  	}
-	}
-	return obj;
-};
   
 connection.onRequest("yaml.replaceVariable", async (params: { uri: string; text: string }) => {
 	const doc = documents.get(params.uri);
@@ -529,8 +479,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<Diagnos
 	const varPattern = /\${(.*?)}/g;
 	while ((m = varPattern.exec(text)) && problems < settings.maxNumberOfProblems) {
 		const varExpr = m[1].trim();
-		const path = parseExpression(varExpr);
-		const exists = path.length > 0 && getValueByPath(loadedVariables[path[0]], path.slice(1)) !== undefined;
+		const exists = resolveExpression(varExpr, loadedVariables) !== undefined;
 
 		if (!exists) {
 			problems++;
