@@ -329,30 +329,27 @@ connection.onInitialized( async () => {
 			connection.console.log('Workspace folder change event received.');
 		});
 
+		// When server starts, load the variables from *.vars.yaml file in the root of workspace
 		const workspaceFolders = await connection.workspace.getWorkspaceFolders();
 		if (workspaceFolders && workspaceFolders.length > 0) {
 			const folderUri = workspaceFolders[0].uri;
-			connection.console.log(`Workspace folder URI: ${folderUri}`);
 			const folderPath = url.fileURLToPath(folderUri);
-			connection.console.log(`Workspace folder path: ${folderPath}`);
 
 			try {
 				const files = fs.readdirSync(folderPath);
-				connection.console.log(`Files in workspace folder: ${files.join(', ')}`);
 				const varsFiles = files.filter(file => file.endsWith('.vars.yaml'));
 
 				if (varsFiles.length > 0) {
 					const firstMatchPath = path.join(folderPath, varsFiles[0]);
 					const fileContent = fs.readFileSync(firstMatchPath, 'utf8');
 					loadedVariables = parse(fileContent) as Record<string, any>;
-					connection.console.log(`${varsFiles[0]} loaded successfully.`);
 				} else {
 					loadedVariables = {};
-					connection.console.log('No *.vars.yaml file found. Using default context.');
 				}
 			} catch (error) {
 				loadedVariables = {};
 				connection.console.error(`Error loading *.vars.yaml file: ${error}`);
+				connection.window.showErrorMessage(`Error loading *.vars.yaml file: ${error}`);
 			}
 		}
 		
@@ -479,6 +476,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<Diagnos
 	const varPattern = /\${(.*?)}/g;
 	while ((m = varPattern.exec(text)) && problems < settings.maxNumberOfProblems) {
 		const varExpr = m[1].trim();
+		// Check if the variable exists in the loaded variables
 		const exists = resolveExpression(varExpr, loadedVariables) !== undefined;
 
 		if (!exists) {
@@ -500,12 +498,11 @@ async function validateTextDocument(textDocument: TextDocument): Promise<Diagnos
 
 connection.onDidChangeWatchedFiles(_change => {
 	const changes = _change.changes; // List of FileEvent objects
-	connection.console.log('File changes: ' + JSON.stringify(changes));
 
 	for (const change of changes) {
+		// Handle file change events
+		// Type 1: Created, Type 2: Changed, Type 3: Deleted
 		if ((change.type == 1 || change.type === 2) && change.uri.endsWith('.vars.yaml')) {
-			connection.console.log("Found .vars.yaml change");
-
             try {
                 // Convert URI to file path
                 const filePath = url.fileURLToPath(change.uri);
@@ -515,9 +512,9 @@ connection.onDidChangeWatchedFiles(_change => {
                 const jsonData = parse(fileContent);
 
                 loadedVariables = jsonData; // Store the loaded variables in a global variable for now
-				connection.console.log("Loaded variables: " + JSON.stringify(loadedVariables, null, 2));
             } catch (error) {
-                connection.console.error(`Failed to process context.json: ${error}`);
+                connection.console.error(`Failed to process .vars.yaml: ${error}`);
+				connection.window.showErrorMessage(`Failed to process .vars.yaml: ${error}`);
             }
 		}
 	}

@@ -8,7 +8,8 @@ export function resolveExpression(expr: string, vars: Record<string, any>): any 
 	const root = vars[path[0]];
 	return getValueByPath(root, path.slice(1));
 }
-  
+
+// Replace placeholders ${...} in an object with values from vars
 export function replacePlaceholders(obj: any, vars: Record<string, any>): any {
 	if (typeof obj === "string") {
 		return obj.replace(/\${(.*?)}/g, (match, expr) => {
