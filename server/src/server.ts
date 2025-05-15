@@ -30,6 +30,13 @@ import {
 	TextDocument
 } from 'vscode-languageserver-textdocument';
 import { parse, stringify } from 'yaml';
+
+import * as fs from 'fs';
+import * as url from 'url';
+import * as path from 'path';
+
+import { resolveExpression, replacePlaceholders  } from './expressions';
+
 const OPENROUTER_KEY = process.env.OPENROUTER_KEY;
 
 // Create a connection for the server, using Node's IPC as a transport.
@@ -42,6 +49,8 @@ const documents = new TextDocuments(TextDocument);
 let hasConfigurationCapability = false;
 let hasWorkspaceFolderCapability = false;
 let hasDiagnosticRelatedInformationCapability = false;
+
+let loadedVariables: Record<string, any> = {};
 
 // helper functions for data-structure parsing
 function parseYamlContent(content: string) {
@@ -284,72 +293,18 @@ connection.onRequest('llm-schema.extractKeywords', async (params: { schema: any,
 	  return { success: false, error: "Couldn't extract keywords"};
 	}
   });
-
-  const resolveExpression = (expr: string, vars: Record<string, any>): any => {
-	const trimmedExpr = expr.trim();
-	const parts = trimmedExpr.split(/[.\[\]]+/).filter(Boolean);
-	let result: any = undefined;
   
-	const varName = parts[0];
-	if (!(varName in vars)) {
-		return undefined;
-	}
-  
-	result = vars[varName];
-  
-	for (let i = 1; i < parts.length; i++) {
-	  	const part = parts[i];
-  
-	  	const index = !isNaN(Number(part)) ? Number(part) : part;
-  
-	  	if (result === null || result === undefined) {
-			return undefined;
-	  	}
-  
-	  	result = result[index];
-  
-	  	if (result === undefined) {
-			return undefined;
-	  	}
-	}
-  
-	return result;
-};
-  
-const replacePlaceholders = (obj: any, vars: Record<string, any>): any => {
-	if (typeof obj === "string") {
-	  	return obj.replace(/\${(.*?)}/g, (match, expr) => {
-			const value = resolveExpression(expr, vars);
-			if (value === undefined) {
-		  		throw new Error(`Variable "${expr}" is not defined in context.`);
-			}
-			return value;
-	  });
-	} else if (typeof obj === "object" && obj !== null && !Array.isArray(obj)) {
-	  	for (const key in obj) {
-			if (Object.prototype.hasOwnProperty.call(obj, key)) {
-		  		obj[key] = replacePlaceholders(obj[key], vars);
-			}
-	  	}
-	} else if (Array.isArray(obj)) {
-	  	for (let i = 0; i < obj.length; i++) {
-			obj[i] = replacePlaceholders(obj[i], vars);
-	  	}
-	}
-	return obj;
-};
-  
-connection.onRequest("yaml.replaceVariable", async (params: { uri: string; context: any; text: string }) => {
+connection.onRequest("yaml.replaceVariable", async (params: { uri: string; text: string }) => {
 	const doc = documents.get(params.uri);
 	if (!doc) {
 		return { success: false, error: "Document not found" };
 	}
 	try {
-		const contextData = params.context;
+		// const contextData = params.context;
 		const yamlData = parse(params.text);
 		// Replace variables in the text using the context data
-		const replacedData = replacePlaceholders(yamlData, contextData);
-		connection.console.log(JSON.stringify(replacedData, null, 2));
+		const replacedData = replacePlaceholders(yamlData, loadedVariables);
+		//connection.console.log(JSON.stringify(replacedData, null, 2));
 		// Convert the modified YAML object back to a string
 		const yamlString = stringify(replacedData);
 		connection.console.log(yamlString);
@@ -364,7 +319,7 @@ connection.onRequest("yaml.replaceVariable", async (params: { uri: string; conte
 	}
 });
 
-connection.onInitialized(() => {
+connection.onInitialized( async () => {
 	if (hasConfigurationCapability) {
 		// Register for all configuration changes.
 		connection.client.register(DidChangeConfigurationNotification.type, undefined);
@@ -373,6 +328,31 @@ connection.onInitialized(() => {
 		connection.workspace.onDidChangeWorkspaceFolders(_event => {
 			connection.console.log('Workspace folder change event received.');
 		});
+
+		// When server starts, load the variables from *.vars.yaml file in the root of workspace
+		const workspaceFolders = await connection.workspace.getWorkspaceFolders();
+		if (workspaceFolders && workspaceFolders.length > 0) {
+			const folderUri = workspaceFolders[0].uri;
+			const folderPath = url.fileURLToPath(folderUri);
+
+			try {
+				const files = fs.readdirSync(folderPath);
+				const varsFiles = files.filter(file => file.endsWith('.vars.yaml'));
+
+				if (varsFiles.length > 0) {
+					const firstMatchPath = path.join(folderPath, varsFiles[0]);
+					const fileContent = fs.readFileSync(firstMatchPath, 'utf8');
+					loadedVariables = parse(fileContent) as Record<string, any>;
+				} else {
+					loadedVariables = {};
+				}
+			} catch (error) {
+				loadedVariables = {};
+				connection.console.error(`Error loading *.vars.yaml file: ${error}`);
+				connection.window.showErrorMessage(`Error loading *.vars.yaml file: ${error}`);
+			}
+		}
+		
 	}
 });
 
@@ -491,12 +471,53 @@ async function validateTextDocument(textDocument: TextDocument): Promise<Diagnos
 		}
 		diagnostics.push(diagnostic);
 	}
+
+	// 2. Check for undefined variables in ${...}
+	const varPattern = /\${(.*?)}/g;
+	while ((m = varPattern.exec(text)) && problems < settings.maxNumberOfProblems) {
+		const varExpr = m[1].trim();
+		// Check if the variable exists in the loaded variables
+		const exists = resolveExpression(varExpr, loadedVariables) !== undefined;
+
+		if (!exists) {
+			problems++;
+			diagnostics.push({
+				severity: DiagnosticSeverity.Warning,
+				range: {
+					start: textDocument.positionAt(m.index),
+					end: textDocument.positionAt(m.index + m[0].length)
+				},
+				message: `Variable "${varExpr}" is not defined in context.`,
+				source: 'vars'
+			});
+		}
+	}
+
 	return diagnostics;
 }
 
 connection.onDidChangeWatchedFiles(_change => {
-	// Monitored files have change in VSCode
-	connection.console.log('We received a file change event');
+	const changes = _change.changes; // List of FileEvent objects
+
+	for (const change of changes) {
+		// Handle file change events
+		// Type 1: Created, Type 2: Changed, Type 3: Deleted
+		if ((change.type == 1 || change.type === 2) && change.uri.endsWith('.vars.yaml')) {
+            try {
+                // Convert URI to file path
+                const filePath = url.fileURLToPath(change.uri);
+
+                // Read the file
+                const fileContent = fs.readFileSync(filePath, 'utf8');
+                const jsonData = parse(fileContent);
+
+                loadedVariables = jsonData; // Store the loaded variables in a global variable for now
+            } catch (error) {
+                connection.console.error(`Failed to process .vars.yaml: ${error}`);
+				connection.window.showErrorMessage(`Failed to process .vars.yaml: ${error}`);
+            }
+		}
+	}
 });
 
 // This handler provides the initial list of the completion items.

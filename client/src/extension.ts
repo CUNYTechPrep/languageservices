@@ -38,7 +38,10 @@ export function activate(context: ExtensionContext) {
 		documentSelector: [{ scheme: 'file', language: 'yaml' }],
 		synchronize: {
 			// Notify the server about file changes to '.clientrc files contained in the workspace
-			fileEvents: workspace.createFileSystemWatcher('**/.clientrc')
+			fileEvents: [
+				workspace.createFileSystemWatcher('**/.clientrc'),
+				workspace.createFileSystemWatcher('**/*.vars.yaml'),
+			],
 		}
 	};
 
@@ -182,7 +185,7 @@ export function activate(context: ExtensionContext) {
 			return;
 		}
 		const text = editor.document.getText();
-		const context = loadJSONContextFile();
+		// const context = loadJSONContextFile();
 	
 		if (!text) {
 			vscode.window.showErrorMessage("No text in file.");
@@ -202,7 +205,6 @@ export function activate(context: ExtensionContext) {
 				}>("yaml.replaceVariable", {
 				  	uri: editor.document.uri.toString(),
 				  	text: text,
-				  	context: context,
 				});
 
 				if (response.success && response.modifiedText) {
