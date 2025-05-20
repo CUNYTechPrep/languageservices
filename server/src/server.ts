@@ -36,6 +36,7 @@ import * as url from 'url';
 import * as path from 'path';
 
 import { resolveExpression, replacePlaceholders  } from './expressions';
+import { processIncludes } from './include';
 
 const OPENROUTER_KEY = process.env.OPENROUTER_KEY;
 
@@ -304,9 +305,11 @@ connection.onRequest("yaml.replaceVariable", async (params: { uri: string; text:
 		const yamlData = parse(params.text);
 		// Replace variables in the text using the context data
 		const replacedData = replacePlaceholders(yamlData, loadedVariables);
+
+		const yamlImported = processIncludes(replacedData, path.dirname(doc.uri));
 		//connection.console.log(JSON.stringify(replacedData, null, 2));
 		// Convert the modified YAML object back to a string
-		const yamlString = stringify(replacedData);
+		const yamlString = stringify(yamlImported);
 		connection.console.log(yamlString);
 		// Send the modified YAML string back to the client
 		return {
@@ -355,6 +358,7 @@ connection.onInitialized( async () => {
 		
 	}
 });
+
 
 // The example settings
 interface ExampleSettings {
