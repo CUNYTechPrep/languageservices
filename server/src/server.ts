@@ -225,9 +225,12 @@ let hasDiagnosticRelatedInformationCapability = false;
 let loadedVariables: Record<string, any> = {};
 
 // helper functions for data-structure parsing
-function parseYamlContent(content: string) {
+function parseYamlContent(content: string, docUri: string) {
 	try {
-		const parsedContent = parse(content);
+		const yamlData = parse(content);
+		const replacedData = replacePlaceholders(yamlData, loadedVariables);
+
+		const parsedContent = processIncludes(replacedData, path.dirname(docUri));
 
 		if (parsedContent.correct === true) {
 			return {
@@ -327,7 +330,11 @@ connection.onRequest('llm-feedback.insertComment', async (params: { uri: string,
 		return { success: false, error: 'Document not found' }
 	}
 	try {
-		const parsedContent = parseYamlContent(params.text)
+		const yamlData = parse(params.text);
+		// Replace variables in the text using the context data
+		const replacedData = replacePlaceholders(yamlData, loadedVariables);
+
+		const parsedContent = processIncludes(replacedData, path.dirname(doc.uri));
 		if (!parsedContent) {
 			return {
 				success: false,
@@ -494,29 +501,19 @@ connection.onRequest("yaml.replaceVariable", async (params: { uri: string; text:
 	}
 });
 
-connection.onRequest('yaml-actions.execute', async (params: { yamlText: string }) => {
-	try {
-		connection.console.log("Executing YAML actions for: " + params.yamlText);
-		const parsedYaml = parse(params.yamlText);
-		const { results, context } = await traverseYamlAndExecuteActions(parsedYaml);
-
-		return {
-			success: true,
-			results,
-			llmResult: context.llmResult,
-			correctedData: context.correctedData,
-			context
-		};
-	} catch (error: any) {
-		connection.console.error("Error executing YAML actions: " + error);
-		return { success: false, error: "Failed to execute YAML actions: " + error.message };
+connection.onRequest('yaml-actions.execute', async (params: {uri: string, yamlText: string }) => {
+	const doc = documents.get(params.uri);
+	if (!doc) {
+		return { success: false, error: "Document not found" };
 	}
-});
-
-connection.onRequest('yaml-actions.execute', async (params: { yamlText: string }) => {
 	try {
 		connection.console.log("Executing YAML actions for: " + params.yamlText);
-		const parsedYaml = parse(params.yamlText);
+		const yamlData = parse(params.yamlText);
+		// Replace variables in the text using the context data
+		const replacedData = replacePlaceholders(yamlData, loadedVariables);
+
+		const parsedYaml = processIncludes(replacedData, path.dirname(doc.uri));
+		connection.console.log("Parsed YAML Content: " + JSON.stringify(parsedYaml, null, 2));
 		const { results, context } = await traverseYamlAndExecuteActions(parsedYaml);
 
 		return {

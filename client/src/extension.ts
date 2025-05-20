@@ -272,6 +272,7 @@ export function activate(context: ExtensionContext) {
 					context?: any;
 					error?: string;
 				}>('yaml-actions.execute', {
+					uri: editor.document.uri.toString(),
 					yamlText: yamlText
 				});
 	
