@@ -36,6 +36,7 @@ import * as url from 'url';
 import * as path from 'path';
 
 import { resolveExpression, replacePlaceholders  } from './expressions';
+import { processIncludes } from './include';
 
 const OPENROUTER_KEY = process.env.OPENROUTER_KEY;
 
@@ -357,91 +358,6 @@ connection.onInitialized( async () => {
 		
 	}
 });
-
-function isIncludeDirective(node: any): node is { include: string } {
-	return (
-        typeof node === 'object' &&
-        node !== null &&
-        !Array.isArray(node) && // Ensure it's a plain object, not an array treated as an object
-        Object.keys(node).length === 1 &&
-        Object.prototype.hasOwnProperty.call(node, 'include') &&
-        typeof node['include'] === 'string'
-    );
-}
-
-function validateStaticContent(node: any) {
-	if (typeof node === 'string') {
-		if (node.includes('${')) {
-			throw new Error(`Variable placeholder found: ${node}`);
-		}
-		return;
-	}
-
-	if (node === null || typeof node !== 'object') {
-		return;
-	}
-
-	if (Array.isArray(node)) {
-		node.forEach(item => validateStaticContent(item));
-	} else if (isIncludeDirective(node)) {
-		throw new Error(`Include directive found: ${node.include}`);
-	} else {
-		for (const key in node) {
-			if (Object.prototype.hasOwnProperty.call(node, key)) {
-				validateStaticContent(node[key]);
-			}
-		}
-	}
-}
-
-function loadAndValidateIncludedContent(filepath: string, baseDir: string): any {
-	connection.console.log(`Loading included file: ${filepath}`);
-	connection.console.log(`Base directory: ${baseDir}`);
-
-	const fullPath = path.resolve(url.fileURLToPath(baseDir), filepath);
-	connection.console.log(`Full path: ${fullPath}`);
-	const fileExtension = path.extname(fullPath).toLowerCase();
-	try {
-		const fileContent = fs.readFileSync(fullPath, 'utf8');
-		if (fileExtension === '.yaml') { // TODO: Support markdown
-			const parsedContent = parse(fileContent);
-			validateStaticContent(parsedContent);
-			return parsedContent
-		} else {
-			return null;
-		}
- 	} catch (error) {
-		connection.console.error(`Error loading included file: ${error}`);
-		connection.window.showErrorMessage(`Error loading included file: ${error}`);
-		return null;
-	}
-}
-
-function processIncludes(node:any, baseDir: string): any {
-	if (node === null || typeof node !== 'object') {
-		return node;
-	}
-
-	if (Array.isArray(node)) {
-		return node.map(item => processIncludes(item, baseDir));
-	}
-
-	if (isIncludeDirective(node)) {
-		const filepath = node.include;
-		return loadAndValidateIncludedContent(filepath, baseDir);
-	}
-
-	const processedObject: any = {};
-	for (const key in node) {
-		if (Object.prototype.hasOwnProperty.call(node, key)) {
-			processedObject[key] = processIncludes(node[key], baseDir);
-		}
-	}
-
-	connection.console.log(`Processed includes for key: ${baseDir}}`);
-
-	return processedObject;
-}
 
 
 // The example settings
