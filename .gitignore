@@ -1,5 +1,5 @@
-*/node_modules
-*/dist
-lerna-debug.log
+out
 node_modules
-.DS_Store
+client/server
+.vscode-test
+.env
