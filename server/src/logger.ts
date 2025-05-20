@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 // Define the directory and file path for logs
-const LOG_DIR = path.resolve(process.cwd(),'logs')
+const LOG_DIR = path.join(process.cwd(),'logs')
 const LOG_PATH = path.join(LOG_DIR, 'llm_logs.jsonl');
 
 // Maximum number of logs to keep in the file
