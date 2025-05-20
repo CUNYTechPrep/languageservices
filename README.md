@@ -1,37 +1,80 @@
-# LSP Example
+# YAML LSP for Domain-Specific Language (VS Code LSP)
 
-Heavily documented sample code for https://code.visualstudio.com/api/language-extensions/language-server-extension-guide
+A modern, extensible Language Server Protocol (LSP) implementation for VS Code, supporting YAML, variable interpolation, file/module includes, and LLM-powered features.
 
-## Functionality
+## Features
 
-This Language Server works for plain text file. It has the following language features:
-- Completions
-- Diagnostics regenerated on each file change or configuration change
+- **YAML & Plain Text Support**: Language features for YAML and plaintext files.
+- **Completions**: Context-aware code completion for YAML keywords and custom schema.
+- **Diagnostics**: Real-time diagnostics for uppercase words, undefined variables, and more.
+- **Variable Interpolation**: Jinja2-style `${var}` variable replacement using `.vars.yaml` files.
+- **File Includes**: Import YAML files as modules using `include` directives.
+- **LLM Integration**: Send prompts and data to LLMs (OpenRouter, DeepSeek, etc.) for code analysis, correction, and feedback.
+- **Schema Keyword Extraction**: Extract and compare YAML schema keywords with your document.
+- **End-to-End Tests**: Automated tests for both client and server.
 
-It also includes an End-to-End test.
-
-## Structure
+## Project Structure
 
 ```
 .
-├── client // Language Client
-│   ├── src
-│   │   ├── test // End to End tests for Language Client / Server
-│   │   └── extension.ts // Language Client entry point
-├── package.json // The extension manifest.
-└── server // Language Server
-    └── src
-        └── server.ts // Language Server entry point
+├── client/                  # VS Code Language Client
+│   ├── src/
+│   │   ├── extension.ts     # Client entry point
+│   │   └── test/            # End-to-end tests
+│   └── ...
+├── server/                  # Language Server
+│   ├── src/
+│   │   ├── server.ts        # Main LSP server
+│   │   ├── include.ts       # Include/module logic for YAML
+│   │   ├── logger.ts        # Logging utilities
+│   │   ├── errorHandler.ts  # LLM and server error handling
+│   │   └── expressions/     # Variable resolution and interpolation
+│   └── ...
+├── package.json             # Monorepo manifest
+├── README.md                # This file
+└── ...
 ```
 
-## Running the Sample
+## Getting Started
 
-- Run `npm install` in this folder. This installs all necessary npm modules in both the client and server folder
-- Open VS Code on this folder.
-- Press Ctrl+Shift+B to start compiling the client and server in [watch mode](https://code.visualstudio.com/docs/editor/tasks#:~:text=The%20first%20entry%20executes,the%20HelloWorld.js%20file.).
-- Switch to the Run and Debug View in the Sidebar (Ctrl+Shift+D).
-- Select `Launch Client` from the drop down (if it is not already).
-- Press ▷ to run the launch config (F5).
-- In the [Extension Development Host](https://code.visualstudio.com/api/get-started/your-first-extension#:~:text=Then%2C%20inside%20the%20editor%2C%20press%20F5.%20This%20will%20compile%20and%20run%20the%20extension%20in%20a%20new%20Extension%20Development%20Host%20window.) instance of VSCode, open a document in 'plain text' language mode.
-  - Type `j` or `t` to see `Javascript` and `TypeScript` completion.
-  - Enter text content such as `AAA aaa BBB`. The extension will emit diagnostics for all words in all-uppercase.
+1. **Install dependencies**
+   ```sh
+   npm install
+   ```
+2. **Build the project**
+   ```sh
+   npm run compile
+   ```
+   Or start in watch mode:
+   ```sh
+   npm run watch
+   ```
+3. **Open in VS Code**
+   - Open this folder in VS Code.
+   - Press `F5` to launch the Extension Development Host.
+
+## Usage
+
+- Open a YAML or plaintext file.
+- Use completions for keywords like `prompt`, `data`, `include`, etc.
+- Add variables in a `.vars.yaml` file at the workspace root. Use `${var}` in your YAML to reference them.
+- Use `include: somefile.yaml` to import YAML modules.
+- Use the extension's commands or UI to send prompts/data to the LLM for feedback or correction.
+
+## Advanced
+
+- **Schema Keyword Extraction**: Use the `llm-schema.extractKeywords` request to compare your YAML with a schema.
+- **LLM Feedback**: Use the `llm-feedback.insertComment` request to get LLM-powered comments or corrections.
+- **Custom Includes**: Extend `server/src/include.ts` to support new file types or module behaviors.
+
+## Testing
+
+- Run all tests:
+  ```sh
+  cd client && npm test
+  cd ../server && npm test
+  ```
+
+## Contributing
+
+Contributions are welcome! Please open issues or pull requests for improvements, bug fixes, or new features.
