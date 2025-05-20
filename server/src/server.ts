@@ -203,7 +203,7 @@ connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, 
 				"messages": [
 					{
 						"role": "user",
-						"content": contentForLLM // Send prompt and data from YAML
+						"content": params.text+llmPrompt //swapped for llmcontent here  Send prompt and data from YAML
 					}
 				]
 			})
@@ -245,12 +245,12 @@ connection.onRequest('llm-feedback.insertComment', async (params: {uri: string, 
 				replacement: feedback
 			};
 		} else {
-			const cleanFeedback = feedback.replace(/\n/g, ' ').trim();
+			const cleanFeedback = feedback.trim(); //.replace(/\n/g, ' ') if you want a single line
 			return {
 				success: true,
 				comment: cleanFeedback,
 				position:{
-					line: params.range.start.line +1,
+					line: params.range.end.line +1,//inserts after highlihged block
 					character:0
 				}
 			};
