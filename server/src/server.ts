@@ -347,8 +347,10 @@ connection.onRequest('llm-feedback.insertComment', async (params: { uri: string,
 				1.Convert the following prompts into a YAML format that uses a pseudo code that you can interpret precisely.
 				2.Evaluate the YAML and write any improvements and extensions.
 				3.Revise the original YAML to include all the improvements and extension you suggested with comments.
-				4.Extract all the keywords used in the YAML specification and list them, explaining how each is to be used.
-				Return prompt 3 and 4 only. Prompt 4 should have the keywords in json format, keywords{word:,explanation:}
+				4.Extract all the keywords used in the YAML specification and return them in JSON Schema format.
+				Return ONLY the output in the following structured format: 
+				{"new_content": "<OUTPUT OF STEP 3 (Revised YAML with comments)>",
+  				"new_schema": "<OUTPUT OF STEP 4 (JSON Schema of YAML keywords)>"}
 				`.trim();
 		// Not using the above, but leaving it here for future.
 		//Key words should soon be returned as well, probably in a list or tuple format. These can be used to to replace the existing ones
@@ -416,7 +418,22 @@ connection.onRequest('llm-feedback.insertComment', async (params: { uri: string,
 		console.log(result);
 		connection.console.log("LLM Prompt:" + contentForLLM);
 		connection.console.log("LLM Response:" + JSON.stringify(result, null, 2));
+
+		interface PromptOutput {
+			new_content: string, // This is the new improved YAML string
+			new_schema: object // This is the generated schema from the new keywords
+		}
+
+		function cleanChatJsonOutput(raw: string): string {
+			return raw
+				.replace(/^\s*```json\s*/i, '')  // remove starting ```json
+				.replace(/^\s*```\s*/i, '')      // or generic ```
+				.replace(/\s*```$/, '')          // remove trailing ```
+				.trim();
+		}
+
 		const feedback = result.choices[0]?.message?.content ?? '';
+		let parsedOutput : PromptOutput;
 		//logResponseToFile(params.text, result);
 		if (parsedContent.isCorrection && parsedContent.shouldReplace) {
 			return {
@@ -426,9 +443,25 @@ connection.onRequest('llm-feedback.insertComment', async (params: { uri: string,
 			};
 		} else {
 			const cleanFeedback = feedback.trim(); //.replace(/\n/g, ' ') if you want a single line
+			parsedOutput = JSON.parse(cleanChatJsonOutput(cleanFeedback))
+			connection.console.log(JSON.stringify(parsedOutput));
+			if (hasWorkspaceFolderCapability) {
+				const workspaceFolders = await connection.workspace.getWorkspaceFolders();
+				if (workspaceFolders && workspaceFolders.length > 0){
+					const rootFolderUri = workspaceFolders[0].uri
+					const rootFolderPath = url.fileURLToPath(rootFolderUri);
+
+					try {
+						const pathToSchema = path.join(rootFolderPath, "generated_schema.json")
+						await fs.promises.writeFile(pathToSchema, JSON.stringify(parsedOutput.new_schema, null, 2), "utf-8")
+					} catch (err) {
+						connection.console.log(JSON.stringify(err))
+					}
+				}
+			}
 			return {
 				success: true,
-				comment: cleanFeedback,
+				comment: parsedOutput.new_content,
 				position:{
 					line: params.range.end.line +1,//inserts after highlihged block
 					character:0

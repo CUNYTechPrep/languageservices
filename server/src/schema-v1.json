@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Custom YAML Schema",
+  "type": "object",
+  "properties": {
+    "prompt": {
+      "type": "string"
+    },
+    "data": {
+      "description": "Can be any valid JSON/YAML value"
+    },
+    "correct": {
+      "type": "string"
+    }
+  },
+  "required": ["prompt", "data"]
+}
