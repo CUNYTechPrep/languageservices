@@ -1,30 +1,30 @@
 {
-	"name": "lsp-sample-client",
-	"description": "VSCode part of a language server",
-	"author": "Microsoft Corporation",
-	"license": "MIT",
-	"version": "0.0.1",
-	"publisher": "vscode",
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/Microsoft/vscode-extension-samples"
-	},
-	"engines": {
-		"vscode": "^1.75.0"
-	},
-	"categories": [
+  "name": "lsp-sample-client",
+  "description": "VSCode part of a language server",
+  "author": "Microsoft Corporation",
+  "license": "MIT",
+  "version": "0.0.1",
+  "publisher": "vscode",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Microsoft/vscode-extension-samples"
+  },
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
     "Programming Languages",
     "Other"
-	],
-	"activationEvents": [
+  ],
+  "activationEvents": [
     "onCommand:extension.getLLMFeedback",
     "onLanguage:javascript",
     "onLanguage:typescript",
     "onLanguage:python",
     "onLanguage:yaml"
-  	],
-	"main": "./out/extension.js",
-	"contributes": {
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
     "commands": [
       {
         "command": "extension.getLLMFeedback",
@@ -48,16 +48,16 @@
         }
       ]
     }
-  	},
-	"dependencies": {
-		"glob": "^11.0.0",
-		"vscode-languageclient": "^9.0.1"
-	},
-	"devDependencies": {
-		"@types/vscode": "^1.75.1",
-		"@vscode/test-electron": "^2.3.9"
-	},
-	"scripts": {
+  },
+  "dependencies": {
+    "glob": "^11.0.0",
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.75.1",
+    "@vscode/test-electron": "^2.3.9"
+  },
+  "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",

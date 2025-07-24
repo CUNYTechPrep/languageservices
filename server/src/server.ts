@@ -19,23 +19,21 @@ import {
 	TextDocumentSyncKind,
 	InitializeResult,
 	DocumentDiagnosticReportKind,
-	type DocumentDiagnosticReport
+	type DocumentDiagnosticReport,
 } from 'vscode-languageserver/node';
 
 import { logger, logErrorToFile, logResponseToFile } from './logger';
 
 import { LLMError, handleLLMError } from './errorHandler';
 
-import {
-	TextDocument
-} from 'vscode-languageserver-textdocument';
+import { TextDocument } from 'vscode-languageserver-textdocument';
 import { parse, stringify } from 'yaml';
 
 import * as fs from 'fs';
 import * as url from 'url';
 import * as path from 'path';
 
-import { resolveExpression, replacePlaceholders  } from './expressions';
+import { resolveExpression, replacePlaceholders } from './expressions';
 import { processIncludes } from './include';
 
 const OPENROUTER_KEY = process.env.OPENROUTER_KEY;
@@ -46,14 +44,14 @@ interface ActionContext {
 	data?: any;
 	correctedData?: string;
 	llmResult?: string;
-  }
+}
 
-  interface LLMResponse {
+interface LLMResponse {
 	choices: {
 		message?: {
 			role: string;
 			content: string;
-		}
+		};
 	}[];
 }
 
@@ -70,7 +68,7 @@ function registerActionHandlers() {
 // just get functionality first
 
 async function handlePromptAction(data: any, context?: any) {
-	connection.console.log("Prompt keyword found: " + JSON.stringify(data));
+	connection.console.log('Prompt keyword found: ' + JSON.stringify(data));
 	if (context) {
 		context.prompt = data;
 	}
@@ -78,7 +76,7 @@ async function handlePromptAction(data: any, context?: any) {
 }
 
 async function handleCorrectionAction(data: any, context?: any) {
-	connection.console.log("Correct keyword found: " + JSON.stringify(data));
+	connection.console.log('Correct keyword found: ' + JSON.stringify(data));
 	if (data === true && context && context.data) {
 		const contentForLLM = `
 	  Please correct the following code or syntax:
@@ -88,33 +86,33 @@ async function handleCorrectionAction(data: any, context?: any) {
 	  `;
 
 		try {
-			const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-				method: "POST",
+			const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+				method: 'POST',
 				headers: {
-					"Authorization": "Bearer " + OPENROUTER_KEY,
-					"Content-Type": "application/json"
+					Authorization: 'Bearer ' + OPENROUTER_KEY,
+					'Content-Type': 'application/json',
 				},
 				body: JSON.stringify({
-					"model": "deepseek/deepseek-chat-v3-0324:free",
-					"models": ["shisa-ai/shisa-v2-llama3.3-70b:free", "qwen/qwen3-32b:free"],
-					"messages": [
+					model: 'deepseek/deepseek-chat-v3-0324:free',
+					models: ['shisa-ai/shisa-v2-llama3.3-70b:free', 'qwen/qwen3-32b:free'],
+					messages: [
 						{
-							"role": "user",
-							"content": contentForLLM
-						}
-					]
-				})
+							role: 'user',
+							content: contentForLLM,
+						},
+					],
+				}),
 			});
 
 			if (!response.ok) {
-				throw new Error("Failed to correct content");
+				throw new Error('Failed to correct content');
 			}
 
-			const result = await response.json() as LLMResponse;
+			const result = (await response.json()) as LLMResponse;
 			context.correctedData = result.choices[0]?.message?.content;
 			return { type: 'correction', original: context.data, corrected: context.correctedData };
 		} catch (error: any) {
-			connection.console.error("Error in correction action: " + error);
+			connection.console.error('Error in correction action: ' + error);
 			return { type: 'correction', error: error.message };
 		}
 	}
@@ -171,40 +169,40 @@ async function executeDefaultLLMAction(context: any): Promise<any> {
 	`;
 
 	try {
-		const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-			method: "POST",
+		const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+			method: 'POST',
 			headers: {
-				"Authorization": "Bearer " + OPENROUTER_KEY,
-				"Content-Type": "application/json"
+				Authorization: 'Bearer ' + OPENROUTER_KEY,
+				'Content-Type': 'application/json',
 			},
 			body: JSON.stringify({
-				"model": "deepseek/deepseek-chat-v3-0324:free",
-				"models": ["shisa-ai/shisa-v2-llama3.3-70b:free", "qwen/qwen3-32b:free"],
-				"messages": [
+				model: 'deepseek/deepseek-chat-v3-0324:free',
+				models: ['shisa-ai/shisa-v2-llama3.3-70b:free', 'qwen/qwen3-32b:free'],
+				messages: [
 					{
-						"role": "user",
-						"content": contentForLLM
-					}
-				]
-			})
+						role: 'user',
+						content: contentForLLM,
+					},
+				],
+			}),
 		});
 
 		if (!response.ok) {
-			const error = await response.json() as any;
-			throw new Error(error.error?.message || "Unknown error");
+			const error = (await response.json()) as any;
+			throw new Error(error.error?.message || 'Unknown error');
 		}
 
-		const result = await response.json() as LLMResponse;
+		const result = (await response.json()) as LLMResponse;
 		context.llmResult = result.choices[0]?.message?.content;
 		return { type: 'llm_processing', result: context.llmResult };
 	} catch (error: any) {
-		connection.console.error("Error executing LLM action: " + error);
+		connection.console.error('Error executing LLM action: ' + error);
 		return { type: 'llm_processing', error: error.message };
 	}
 }
 
 async function handleDataAction(data: any, context?: any) {
-	connection.console.log("Data keyword found: " + typeof data);
+	connection.console.log('Data keyword found: ' + typeof data);
 	if (context) {
 		context.data = data;
 	}
@@ -237,23 +235,26 @@ function parseYamlContent(content: string, docUri: string) {
 				parsedContent,
 				isCorrection: true,
 				shouldReplace: true,
-				dataToCorrect: parsedContent.data || ""
+				dataToCorrect: parsedContent.data || '',
 			};
 		}
 
 		const parsedPrompt = parsedContent.prompt;
 		let parsedData = parsedContent.data;
 		if (typeof parsedData === 'string') {
-			parsedData = parsedData.split(/\s+/).map(line => line.trim()).filter(item => item.length > 0);
+			parsedData = parsedData
+				.split(/\s+/)
+				.map(line => line.trim())
+				.filter(item => item.length > 0);
 		}
 		return {
 			parsedContent,
 			parsedPrompt,
 			parsedData,
-			isCorrection: false
+			isCorrection: false,
 		};
 	} catch (error) {
-		connection.console.error("Error parsing YAML: " + error);
+		connection.console.error('Error parsing YAML: ' + error);
 		return null;
 	}
 }
@@ -266,7 +267,7 @@ function extractSchemaKeywords(schema: any) {
 			keywords.push({
 				key_word: key,
 				value_type: val,
-				appearsInYaml: false
+				appearsInYaml: false,
 			});
 		}
 	}
@@ -296,19 +297,19 @@ connection.onInitialize((params: InitializeParams) => {
 			textDocumentSync: TextDocumentSyncKind.Incremental,
 			// Tell the client that this server supports code completion.
 			completionProvider: {
-				resolveProvider: true
+				resolveProvider: true,
 			},
 			diagnosticProvider: {
 				interFileDependencies: false,
-				workspaceDiagnostics: false
-			}
-		}
+				workspaceDiagnostics: false,
+			},
+		},
 	};
 	if (hasWorkspaceFolderCapability) {
 		result.capabilities.workspace = {
 			workspaceFolders: {
-				supported: true
-			}
+				supported: true,
+			},
 		};
 	}
 	return result;
@@ -317,51 +318,55 @@ connection.onInitialize((params: InitializeParams) => {
 function notifyClientError(message: string) {
 	connection.sendNotification(ShowMessageNotification.type, {
 		type: MessageType.Error,
-		message: message
+		message: message,
 	});
 }
 
 // ENDPOINTS START HERE (onRequests)
-connection.onRequest('llm-feedback.insertComment', async (params: { uri: string, range: any, text: string }) => {
-	// use func parseYamlContent() here
-	console.log(params.text);
-	const doc = documents.get(params.uri)
-	if (!doc) {
-		return { success: false, error: 'Document not found' }
-	}
-	try {
-		const yamlData = parse(params.text);
-		// Replace variables in the text using the context data
-		const replacedData = replacePlaceholders(yamlData, loadedVariables);
-
-		const parsedContent = processIncludes(replacedData, path.dirname(doc.uri));
-		if (!parsedContent) {
-			return {
-				success: false,
-				error: "failed parsing YAML content"
-			};
+connection.onRequest(
+	'llm-feedback.insertComment',
+	async (params: { uri: string; range: any; text: string }) => {
+		// use func parseYamlContent() here
+		console.log(params.text);
+		const doc = documents.get(params.uri);
+		if (!doc) {
+			return { success: false, error: 'Document not found' };
 		}
-		connection.console.log("Parsed YAML Content: " + JSON.stringify(parsedContent.parsedContent, null, 2));
+		try {
+			const yamlData = parse(params.text);
+			// Replace variables in the text using the context data
+			const replacedData = replacePlaceholders(yamlData, loadedVariables);
 
-		const llmPrompt = `
+			const parsedContent = processIncludes(replacedData, path.dirname(doc.uri));
+			if (!parsedContent) {
+				return {
+					success: false,
+					error: 'failed parsing YAML content',
+				};
+			}
+			connection.console.log(
+				'Parsed YAML Content: ' + JSON.stringify(parsedContent.parsedContent, null, 2)
+			);
+
+			const llmPrompt = `
 				1.Convert the following prompts into a YAML format that uses a pseudo code that you can interpret precisely.
 				2.Evaluate the YAML and write any improvements and extensions.
 				3.Revise the original YAML to include all the improvements and extension you suggested with comments.
 				4.Extract all the keywords used in the YAML specification and list them, explaining how each is to be used.
 				Return prompt 3 and 4 only. Prompt 4 should have the keywords in json format, keywords{word:,explanation:}
 				`.trim();
-		// Not using the above, but leaving it here for future.
-		//Key words should soon be returned as well, probably in a list or tuple format. These can be used to to replace the existing ones
-		let contentForLLM;
-		if (parsedContent.isCorrection) {
-			contentForLLM = `
+			// Not using the above, but leaving it here for future.
+			//Key words should soon be returned as well, probably in a list or tuple format. These can be used to to replace the existing ones
+			let contentForLLM;
+			if (parsedContent.isCorrection) {
+				contentForLLM = `
 			Please correct the following code or syntac:
 			${parsedContent.dataToCorrect}
 
 			Return ONLY the corrected code. NOTHING ELSE. 
 			`;
-		} else {
-			contentForLLM = `
+			} else {
+				contentForLLM = `
 			I have the following YAML text:
 			${params.text}
 			Parsed YAML text here:
@@ -370,114 +375,123 @@ connection.onRequest('llm-feedback.insertComment', async (params: { uri: string,
 			Perform the requested operation from the prompt on the data.
 			Return ONLY the result as a single YAML Comment line, with no explanation, code blocks, or additional formatting.
 			`;
-		}
-		const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-			method: "POST",
-			headers: {
-				"Authorization": "Bearer " + OPENROUTER_KEY,
-				"Content-Type": "application/json"
-			},
-			body: JSON.stringify({
-				"model": "deepseek/deepseek-chat-v3-0324:free", // Model 
-				"models": ["shisa-ai/shisa-v2-llama3.3-70b:free", "qwen/qwen3-32b:free"], //Backup models for OpenRouter server
-				"messages": [
-					{
-						"role": "user",
-						"content": params.text+llmPrompt //swapped for llmcontent here  Send prompt and data from YAML
-					}
-				]
-			})
-		});
+			}
+			const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+				method: 'POST',
+				headers: {
+					Authorization: 'Bearer ' + OPENROUTER_KEY,
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({
+					model: 'deepseek/deepseek-chat-v3-0324:free', // Model
+					models: ['shisa-ai/shisa-v2-llama3.3-70b:free', 'qwen/qwen3-32b:free'], //Backup models for OpenRouter server
+					messages: [
+						{
+							role: 'user',
+							content: params.text + llmPrompt, //swapped for llmcontent here  Send prompt and data from YAML
+						},
+					],
+				}),
+			});
 
-		//hanlde error here
-		if (!response.ok) {
-			const error = await response.json() as { error: { message: string, code: string } };
-			console.log(error)
-			throw new LLMError(error.error.code, error.error.message);
-		}
-
-		interface OpenAIResponse {
-			choices: {
-				message?: {
-					role: string;
-					content: string;
+			//hanlde error here
+			if (!response.ok) {
+				const error = (await response.json()) as {
+					error: { message: string; code: string };
 				};
-				error?: {
-					message: string;
-					code: string;
+				console.log(error);
+				throw new LLMError(error.error.code, error.error.message);
+			}
+
+			interface OpenAIResponse {
+				choices: {
+					message?: {
+						role: string;
+						content: string;
+					};
+					error?: {
+						message: string;
+						code: string;
+					};
+				}[];
+			}
+			const result = (await response.json()) as OpenAIResponse;
+			if (result.choices[0].error) {
+				const error = result.choices[0].error;
+				throw new LLMError(error.code, error.message);
+			}
+			console.log(result);
+			connection.console.log('LLM Prompt:' + contentForLLM);
+			connection.console.log('LLM Response:' + JSON.stringify(result, null, 2));
+			const feedback = result.choices[0]?.message?.content ?? '';
+			//logResponseToFile(params.text, result);
+			if (parsedContent.isCorrection && parsedContent.shouldReplace) {
+				return {
+					success: true,
+					replaceSelection: true,
+					replacement: feedback,
 				};
-			}[];
-		}
-		const result = await response.json() as OpenAIResponse;
-		if (result.choices[0].error) {
-			const error = result.choices[0].error;
-			throw new LLMError(error.code, error.message);
-		}
-		console.log(result);
-		connection.console.log("LLM Prompt:" + contentForLLM);
-		connection.console.log("LLM Response:" + JSON.stringify(result, null, 2));
-		const feedback = result.choices[0]?.message?.content ?? '';
-		//logResponseToFile(params.text, result);
-		if (parsedContent.isCorrection && parsedContent.shouldReplace) {
-			return {
-				success: true,
-				replaceSelection: true,
-				replacement: feedback
-			};
-		} else {
-			const cleanFeedback = feedback.trim(); //.replace(/\n/g, ' ') if you want a single line
-			return {
-				success: true,
-				comment: cleanFeedback,
-				position:{
-					line: params.range.end.line +1,//inserts after highlihged block
-					character:0
-				}
-			};
-		}
-
-	} catch (error) {
-		if (error instanceof LLMError) {
-			//logErrorToFile(params.text, error)
-			const errorMessage = handleLLMError(error);
-			notifyClientError(errorMessage);
-			notifyClientError(error.message)
-			return { success: false, error: errorMessage }
-		}
-	}
-})
-
-connection.onRequest('llm-schema.extractKeywords', async (params: { schema: any, yamlText?: string }) => {
-	try {
-		const schemaKeywords = extractSchemaKeywords(params.schema);
-
-		if (params.yamlText) {
-			try {
-				const parsedYaml = parse(params.yamlText);
-
-				for (let i = 0; i < schemaKeywords.length; i++) {
-					if (parsedYaml.hasOwnProperty(schemaKeywords[i].key_word)) {
-						schemaKeywords[i].appearsInYaml = true;
-					}
-				}
-
-				connection.console.log(`Compared ${schemaKeywords.length} schema keywords with YAML content`);
-			} catch (error) {
-				connection.console.warn("Could not parse YAML to compare with schema: " + error);
+			} else {
+				const cleanFeedback = feedback.trim(); //.replace(/\n/g, ' ') if you want a single line
+				return {
+					success: true,
+					comment: cleanFeedback,
+					position: {
+						line: params.range.end.line + 1, //inserts after highlihged block
+						character: 0,
+					},
+				};
+			}
+		} catch (error) {
+			if (error instanceof LLMError) {
+				//logErrorToFile(params.text, error)
+				const errorMessage = handleLLMError(error);
+				notifyClientError(errorMessage);
+				notifyClientError(error.message);
+				return { success: false, error: errorMessage };
 			}
 		}
-
-		return { success: true, keywords: schemaKeywords };
-	} catch (error) {
-		connection.console.error("Couldn't extract keywords: " + error);
-		return { success: false, error: "Couldn't extract keywords" };
 	}
-  });
-  
-connection.onRequest("yaml.replaceVariable", async (params: { uri: string; text: string }) => {
+);
+
+connection.onRequest(
+	'llm-schema.extractKeywords',
+	async (params: { schema: any; yamlText?: string }) => {
+		try {
+			const schemaKeywords = extractSchemaKeywords(params.schema);
+
+			if (params.yamlText) {
+				try {
+					const parsedYaml = parse(params.yamlText);
+
+					for (let i = 0; i < schemaKeywords.length; i++) {
+						if (parsedYaml.hasOwnProperty(schemaKeywords[i].key_word)) {
+							schemaKeywords[i].appearsInYaml = true;
+						}
+					}
+
+					connection.console.log(
+						`Compared ${schemaKeywords.length} schema keywords with YAML content`
+					);
+				} catch (error) {
+					connection.console.warn(
+						'Could not parse YAML to compare with schema: ' + error
+					);
+				}
+			}
+
+			return { success: true, keywords: schemaKeywords };
+		} catch (error) {
+			connection.console.error("Couldn't extract keywords: " + error);
+			return { success: false, error: "Couldn't extract keywords" };
+		}
+	}
+);
+
+connection.onRequest('yaml.replaceVariable', async (params: { uri: string; text: string }) => {
 	const doc = documents.get(params.uri);
 	if (!doc) {
-		return { success: false, error: "Document not found" };
+		return { success: false, error: 'Document not found' };
 	}
 	try {
 		// const contextData = params.context;
@@ -496,24 +510,24 @@ connection.onRequest("yaml.replaceVariable", async (params: { uri: string; text:
 			modifiedText: yamlString,
 		};
 	} catch (error) {
-		connection.console.error("Error processing YAML: " + error);
-		return { success: false, error: "Error processing YAML" };
+		connection.console.error('Error processing YAML: ' + error);
+		return { success: false, error: 'Error processing YAML' };
 	}
 });
 
-connection.onRequest('yaml-actions.execute', async (params: {uri: string, yamlText: string }) => {
+connection.onRequest('yaml-actions.execute', async (params: { uri: string; yamlText: string }) => {
 	const doc = documents.get(params.uri);
 	if (!doc) {
-		return { success: false, error: "Document not found" };
+		return { success: false, error: 'Document not found' };
 	}
 	try {
-		connection.console.log("Executing YAML actions for: " + params.yamlText);
+		connection.console.log('Executing YAML actions for: ' + params.yamlText);
 		const yamlData = parse(params.yamlText);
 		// Replace variables in the text using the context data
 		const replacedData = replacePlaceholders(yamlData, loadedVariables);
 
 		const parsedYaml = processIncludes(replacedData, path.dirname(doc.uri));
-		connection.console.log("Parsed YAML Content: " + JSON.stringify(parsedYaml, null, 2));
+		connection.console.log('Parsed YAML Content: ' + JSON.stringify(parsedYaml, null, 2));
 		const { results, context } = await traverseYamlAndExecuteActions(parsedYaml);
 
 		return {
@@ -521,15 +535,15 @@ connection.onRequest('yaml-actions.execute', async (params: {uri: string, yamlTe
 			results,
 			llmResult: context.llmResult,
 			correctedData: context.correctedData,
-			context
+			context,
 		};
 	} catch (error: any) {
-		connection.console.error("Error executing YAML actions: " + error);
-		return { success: false, error: "Failed to execute YAML actions: " + error.message };
+		connection.console.error('Error executing YAML actions: ' + error);
+		return { success: false, error: 'Failed to execute YAML actions: ' + error.message };
 	}
 });
 
-connection.onInitialized( async () => {
+connection.onInitialized(async () => {
 	if (hasConfigurationCapability) {
 		// Register for all configuration changes.
 		connection.client.register(DidChangeConfigurationNotification.type, undefined);
@@ -562,11 +576,9 @@ connection.onInitialized( async () => {
 				connection.window.showErrorMessage(`Error loading *.vars.yaml file: ${error}`);
 			}
 		}
-		
 	}
 	registerActionHandlers();
 });
-
 
 // The example settings
 interface ExampleSettings {
@@ -587,9 +599,7 @@ connection.onDidChangeConfiguration(change => {
 		// Reset all cached document settings
 		documentSettings.clear();
 	} else {
-		globalSettings = (
-			(change.settings.languageServerExample || defaultSettings)
-		);
+		globalSettings = change.settings.languageServerExample || defaultSettings;
 	}
 	// Refresh the diagnostics since the `maxNumberOfProblems` could have changed.
 	// We could optimize things here and re-fetch the setting first can compare it
@@ -605,7 +615,7 @@ function getDocumentSettings(resource: string): Thenable<ExampleSettings> {
 	if (!result) {
 		result = connection.workspace.getConfiguration({
 			scopeUri: resource,
-			section: 'languageServerExample'
+			section: 'languageServerExample',
 		});
 		documentSettings.set(resource, result);
 	}
@@ -617,20 +627,19 @@ documents.onDidClose(e => {
 	documentSettings.delete(e.document.uri);
 });
 
-
-connection.languages.diagnostics.on(async (params) => {
+connection.languages.diagnostics.on(async params => {
 	const document = documents.get(params.textDocument.uri);
 	if (document !== undefined) {
 		return {
 			kind: DocumentDiagnosticReportKind.Full,
-			items: await validateTextDocument(document)
+			items: await validateTextDocument(document),
 		} satisfies DocumentDiagnosticReport;
 	} else {
 		// We don't know the document. We can either try to read it from disk
 		// or we don't report problems for it.
 		return {
 			kind: DocumentDiagnosticReportKind.Full,
-			items: []
+			items: [],
 		} satisfies DocumentDiagnosticReport;
 	}
 });
@@ -658,27 +667,27 @@ async function validateTextDocument(textDocument: TextDocument): Promise<Diagnos
 			severity: DiagnosticSeverity.Warning,
 			range: {
 				start: textDocument.positionAt(m.index),
-				end: textDocument.positionAt(m.index + m[0].length)
+				end: textDocument.positionAt(m.index + m[0].length),
 			},
 			message: `${m[0]} is all uppercase.`,
-			source: 'ex'
+			source: 'ex',
 		};
 		if (hasDiagnosticRelatedInformationCapability) {
 			diagnostic.relatedInformation = [
 				{
 					location: {
 						uri: textDocument.uri,
-						range: Object.assign({}, diagnostic.range)
+						range: Object.assign({}, diagnostic.range),
 					},
-					message: 'Spelling matters'
+					message: 'Spelling matters',
 				},
 				{
 					location: {
 						uri: textDocument.uri,
-						range: Object.assign({}, diagnostic.range)
+						range: Object.assign({}, diagnostic.range),
 					},
-					message: 'Particularly for names'
-				}
+					message: 'Particularly for names',
+				},
 			];
 		}
 		diagnostics.push(diagnostic);
@@ -697,10 +706,10 @@ async function validateTextDocument(textDocument: TextDocument): Promise<Diagnos
 				severity: DiagnosticSeverity.Warning,
 				range: {
 					start: textDocument.positionAt(m.index),
-					end: textDocument.positionAt(m.index + m[0].length)
+					end: textDocument.positionAt(m.index + m[0].length),
 				},
 				message: `Variable "${varExpr}" is not defined in context.`,
-				source: 'vars'
+				source: 'vars',
 			});
 		}
 	}
@@ -715,89 +724,81 @@ connection.onDidChangeWatchedFiles(_change => {
 		// Handle file change events
 		// Type 1: Created, Type 2: Changed, Type 3: Deleted
 		if ((change.type == 1 || change.type === 2) && change.uri.endsWith('.vars.yaml')) {
-            try {
-                // Convert URI to file path
-                const filePath = url.fileURLToPath(change.uri);
+			try {
+				// Convert URI to file path
+				const filePath = url.fileURLToPath(change.uri);
 
-                // Read the file
-                const fileContent = fs.readFileSync(filePath, 'utf8');
-                const jsonData = parse(fileContent);
+				// Read the file
+				const fileContent = fs.readFileSync(filePath, 'utf8');
+				const jsonData = parse(fileContent);
 
-                loadedVariables = jsonData; // Store the loaded variables in a global variable for now
-            } catch (error) {
-                connection.console.error(`Failed to process .vars.yaml: ${error}`);
+				loadedVariables = jsonData; // Store the loaded variables in a global variable for now
+			} catch (error) {
+				connection.console.error(`Failed to process .vars.yaml: ${error}`);
 				connection.window.showErrorMessage(`Failed to process .vars.yaml: ${error}`);
-            }
+			}
 		}
 	}
 });
 
 // This handler provides the initial list of the completion items.
-connection.onCompletion(
-	(_textDocumentPosition: TextDocumentPositionParams): CompletionItem[] => {
-		// The pass parameter contains the position of the text document in
-		// which code complete got requested. For the example we ignore this
-		// info and always provide the same completion items.
-		connection.console.log("Completion requested at:");
-		return [
-			//create list structure
-			{
-				label: 'Yaml',
-				kind: CompletionItemKind.Text,
-				data: 1
-			},
-			{
-				label: 'data',
-				kind: CompletionItemKind.Text,
-				data: 2
-			},
-			{
-				label: 'prompt',
-				kind: CompletionItemKind.Text,
-				data: 3
-			},
-			{
-				label: '# send-to-llm',
-				kind: CompletionItemKind.Text,
-				data: 4
-			},
-			{
-				label: 'correct',
-				kind: CompletionItemKind.Text,
-				data: 5
-			}
-		];
-	}
-);
+connection.onCompletion((_textDocumentPosition: TextDocumentPositionParams): CompletionItem[] => {
+	// The pass parameter contains the position of the text document in
+	// which code complete got requested. For the example we ignore this
+	// info and always provide the same completion items.
+	connection.console.log('Completion requested at:');
+	return [
+		//create list structure
+		{
+			label: 'Yaml',
+			kind: CompletionItemKind.Text,
+			data: 1,
+		},
+		{
+			label: 'data',
+			kind: CompletionItemKind.Text,
+			data: 2,
+		},
+		{
+			label: 'prompt',
+			kind: CompletionItemKind.Text,
+			data: 3,
+		},
+		{
+			label: '# send-to-llm',
+			kind: CompletionItemKind.Text,
+			data: 4,
+		},
+		{
+			label: 'correct',
+			kind: CompletionItemKind.Text,
+			data: 5,
+		},
+	];
+});
 // This handler resolves additional information for the item selected in
 // the completion list.
-connection.onCompletionResolve(
-	(item: CompletionItem): CompletionItem => {
-		if (item.data === 1) {
-			item.detail = 'Yaml details';
-			item.documentation = "Yaml Docs";
-		}
-		else if (item.data === 2) {
-			item.detail = 'Yaml array list or dict';
-			item.documentation = 'Yaml documentation';
-		}
-		else if (item.data === 3) {
-			item.detail = 'Prompt for llm';
-			item.documentation = 'LLM documention, openrouter etc';
-		}
-		else if (item.data === 4) {
-			item.detail = 'Call to send text to llm';
-		}
-		else if (item.data === 5) {
-			item.detail = 'Correct code or syntax';
-			item.documentation = 'When set to true, the LLM will correct the code in the data section and replace the selection with the corrected code.';
-		}
-		return item;
-		//when i get the new keywords, i want to append them to here or revise it
-		//and for details i can put the comments or documentation here
+connection.onCompletionResolve((item: CompletionItem): CompletionItem => {
+	if (item.data === 1) {
+		item.detail = 'Yaml details';
+		item.documentation = 'Yaml Docs';
+	} else if (item.data === 2) {
+		item.detail = 'Yaml array list or dict';
+		item.documentation = 'Yaml documentation';
+	} else if (item.data === 3) {
+		item.detail = 'Prompt for llm';
+		item.documentation = 'LLM documention, openrouter etc';
+	} else if (item.data === 4) {
+		item.detail = 'Call to send text to llm';
+	} else if (item.data === 5) {
+		item.detail = 'Correct code or syntax';
+		item.documentation =
+			'When set to true, the LLM will correct the code in the data section and replace the selection with the corrected code.';
 	}
-);
-
+	return item;
+	//when i get the new keywords, i want to append them to here or revise it
+	//and for details i can put the comments or documentation here
+});
 
 documents.listen(connection);
 

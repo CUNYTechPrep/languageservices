@@ -2,21 +2,21 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 // Define the directory and file path for logs
-const LOG_DIR = path.join(process.cwd(),'logs')
+const LOG_DIR = path.join(process.cwd(), 'logs');
 const LOG_PATH = path.join(LOG_DIR, 'llm_logs.jsonl');
 
 // Maximum number of logs to keep in the file
 const MAX_LOGS = 50;
 
 // Define the structure of the log entry
-interface LLMLog{
-	status:'success' | 'error';
-	timestamp:string;
-	model:string;
-	prompt:string;
-	error?:string;
-	response?:string;
-	tokenUsage?:number;
+interface LLMLog {
+	status: 'success' | 'error';
+	timestamp: string;
+	model: string;
+	prompt: string;
+	error?: string;
+	response?: string;
+	tokenUsage?: number;
 }
 
 // CircularLogger class to manage log entries
@@ -24,13 +24,14 @@ class CircularLogger {
 	private logs: LLMLog[] = [];
 	private writeCount = 0; // Counter to track the number of writes
 
-	constructor() {	
-		// Ensure the log directory exists	
+	constructor() {
+		// Ensure the log directory exists
 		fs.mkdirSync(LOG_DIR, { recursive: true });
 
 		// Initialize from existing file if exists
 		if (fs.existsSync(LOG_PATH)) {
-			const fileContent = fs.readFileSync(LOG_PATH, 'utf-8')
+			const fileContent = fs
+				.readFileSync(LOG_PATH, 'utf-8')
 				.split('\n')
 				.filter(Boolean)
 				.map(line => {
@@ -42,7 +43,7 @@ class CircularLogger {
 				})
 				.filter((log): log is LLMLog => log !== null);
 			//Keep only the last MAX_LOGS entries
-			this.logs = fileContent.slice(-MAX_LOGS); 
+			this.logs = fileContent.slice(-MAX_LOGS);
 			//Rewrite the log file with the cleaned logs
 			// this.flushAll();
 		}
@@ -53,14 +54,14 @@ class CircularLogger {
 		// Add the new log entry to the logs array
 		this.logs.push(entry);
 		// Write the new log entry to the file
-		try{
+		try {
 			fs.appendFileSync(LOG_PATH, JSON.stringify(entry) + '\n', 'utf-8');
 			this.writeCount++;
-		}catch (err) {
+		} catch (err) {
 			console.error('Error writing to log file:', err);
 		}
-		if(this.logs.length >= MAX_LOGS*2){
-			for(let i = 0; i<MAX_LOGS; i++){
+		if (this.logs.length >= MAX_LOGS * 2) {
+			for (let i = 0; i < MAX_LOGS; i++) {
 				this.logs.shift();
 			}
 			this.flushAll(); // Flush every 2*MAX_LOGS writes
@@ -83,8 +84,8 @@ class CircularLogger {
 
 export const logger = new CircularLogger();
 
-export function logErrorToFile(prompt:string, errorJson: any){
-		// Create a log entry
+export function logErrorToFile(prompt: string, errorJson: any) {
+	// Create a log entry
 	const logEntry: LLMLog = {
 		status: 'error',
 		timestamp: new Date().toUTCString(),
@@ -96,7 +97,7 @@ export function logErrorToFile(prompt:string, errorJson: any){
 
 	logger.log(logEntry);
 }
-export function logResponseToFile(prompt:string, responseJson: any){
+export function logResponseToFile(prompt: string, responseJson: any) {
 	// Convert error and response to JSON strings
 	const tokenUsage = parseInt(responseJson.usage.total_tokens || '0');
 	// Create a log entry

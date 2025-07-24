@@ -1,6 +1,7 @@
 # YAML LSP for Domain-Specific Language (VS Code LSP)
 
-A modern, extensible Language Server Protocol (LSP) implementation for VS Code, supporting YAML, variable interpolation, file/module includes, and LLM-powered features.
+A modern, extensible Language Server Protocol (LSP) implementation for VS Code, supporting YAML,
+variable interpolation, file/module includes, and LLM-powered features.
 
 ## Features
 
@@ -9,7 +10,8 @@ A modern, extensible Language Server Protocol (LSP) implementation for VS Code, 
 - **Diagnostics**: Real-time diagnostics for uppercase words, undefined variables, and more.
 - **Variable Interpolation**: Jinja2-style `${var}` variable replacement using `.vars.yaml` files.
 - **File Includes**: Import YAML files as modules using `include` directives.
-- **LLM Integration**: Send prompts and data to LLMs (OpenRouter, DeepSeek, etc.) for code analysis, correction, and feedback.
+- **LLM Integration**: Send prompts and data to LLMs (OpenRouter, DeepSeek, etc.) for code analysis,
+  correction, and feedback.
 - **Schema Keyword Extraction**: Extract and compare YAML schema keywords with your document.
 - **End-to-End Tests**: Automated tests for both client and server.
 
@@ -57,14 +59,17 @@ A modern, extensible Language Server Protocol (LSP) implementation for VS Code, 
 
 - Open a YAML or plaintext file.
 - Use completions for keywords like `prompt`, `data`, `include`, etc.
-- Add variables in a `.vars.yaml` file at the workspace root. Use `${var}` in your YAML to reference them.
+- Add variables in a `.vars.yaml` file at the workspace root. Use `${var}` in your YAML to reference
+  them.
 - Use `include: somefile.yaml` to import YAML modules.
 - Use the extension's commands or UI to send prompts/data to the LLM for feedback or correction.
 
 ## Advanced
 
-- **Schema Keyword Extraction**: Use the `llm-schema.extractKeywords` request to compare your YAML with a schema.
-- **LLM Feedback**: Use the `llm-feedback.insertComment` request to get LLM-powered comments or corrections.
+- **Schema Keyword Extraction**: Use the `llm-schema.extractKeywords` request to compare your YAML
+  with a schema.
+- **LLM Feedback**: Use the `llm-feedback.insertComment` request to get LLM-powered comments or
+  corrections.
 - **Custom Includes**: Extend `server/src/include.ts` to support new file types or module behaviors.
 
 ## Testing
@@ -77,4 +82,5 @@ A modern, extensible Language Server Protocol (LSP) implementation for VS Code, 
 
 ## Contributing
 
-Contributions are welcome! Please open issues or pull requests for improvements, bug fixes, or new features.
+Contributions are welcome! Please open issues or pull requests for improvements, bug fixes, or new
+features.
