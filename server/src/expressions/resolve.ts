@@ -1,4 +1,4 @@
-import { parseExpression, getValueByPath } from "./utils";
+import { parseExpression, getValueByPath } from './utils';
 
 // Resolve expression like 'patient.name' or 'medications[0].name'
 export function resolveExpression(expr: string, vars: Record<string, any>): any {
@@ -11,15 +11,15 @@ export function resolveExpression(expr: string, vars: Record<string, any>): any 
 
 // Replace placeholders ${...} in an object with values from vars
 export function replacePlaceholders(obj: any, vars: Record<string, any>): any {
-	if (typeof obj === "string") {
+	if (typeof obj === 'string') {
 		return obj.replace(/\${(.*?)}/g, (match, expr) => {
 			const value = resolveExpression(expr, vars);
 			if (value === undefined) {
 				throw new Error(`Variable "${expr}" is not defined in context.`);
 			}
 			return value;
-	  });
-	} else if (typeof obj === "object" && obj !== null && !Array.isArray(obj)) {
+		});
+	} else if (typeof obj === 'object' && obj !== null && !Array.isArray(obj)) {
 		for (const key in obj) {
 			if (Object.prototype.hasOwnProperty.call(obj, key)) {
 				obj[key] = replacePlaceholders(obj[key], vars);
@@ -31,4 +31,4 @@ export function replacePlaceholders(obj: any, vars: Record<string, any>): any {
 		}
 	}
 	return obj;
-};
+}

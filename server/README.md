@@ -1,9 +1,12 @@
 ## YAML+LLM Keywords & Implementations
 
 #### Correct & Replace
-Highlight text to send to the LLM to respond & replace broken and/or incorrect code. Future implementations will involve a larger scope of code-context
 
-Examples: 
+Highlight text to send to the LLM to respond & replace broken and/or incorrect code. Future
+implementations will involve a larger scope of code-context
+
+Examples:
+
 ```
 # Correcting broken JavaScript
 correct: true
@@ -12,6 +15,7 @@ data: |
     reutrn a + b;
   }
 ```
+
 ```
 # Correcting YAML text/syntax
 correct: true
