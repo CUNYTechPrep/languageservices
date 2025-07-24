@@ -6,13 +6,15 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { workspace, ExtensionContext } from 'vscode';
-import * as vscode from 'vscode'
+import * as vscode from 'vscode';
 import {
 	LanguageClient,
 	LanguageClientOptions,
 	ServerOptions,
 	TransportKind
 } from 'vscode-languageclient/node';
+
+import { DiffWebviewProvider, WebviewProvider } from './WebviewProvider';
 
 let client: LanguageClient;
 
@@ -128,30 +130,38 @@ export function activate(context: ExtensionContext) {
 					range: selection,
 					text: text
 				});
-				console.log(response)
+				console.log(response);
 				if (response.success) {
-					if (response.replaceSelection && response.replacement) {
-						await editor.edit(editBuilder => {
-							editBuilder.replace(selection, response.replacement);
-						});
-					} else if (response.comment) {
-						await editor.edit(editBuilder => {
-							const line = response.position !== undefined ?
-								response.position.line :
-								selection.end.line + 1;
-							const position = new vscode.Position(line, 0);
-							const currentLine = editor.document.lineAt(selection.start.line)
-							const indent = currentLine.text.match(/^\s*/)?.[0] || '';
-							const commentText = `\n${indent}# LLM Feedback: ${response.comment}\n`
-							editBuilder.insert(position, commentText);
-						});
-					}
+					// if (response.replaceSelection && response.replacement) {
+					// 	await editor.edit(editBuilder => {
+					// 		editBuilder.replace(selection, response.replacement);
+					// 	});
+					// } else if (response.comment) {
+					// 	await editor.edit(editBuilder => {
+					// 		const line = response.position !== undefined ?
+					// 			response.position.line :
+					// 			selection.end.line + 1;
+					// 		const position = new vscode.Position(line, 0);
+					// 		const currentLine = editor.document.lineAt(selection.start.line);
+					// 		const indent = currentLine.text.match(/^\s*/)?.[0] || '';
+					// 		const commentText = `\n${indent}# LLM Feedback: ${response.comment}\n`;
+					// 		editBuilder.insert(position, commentText);
+					// 	});
+					// }
+					const originalText = editor.document.getText(selection);
+					const commentText = response.comment ? `\n# LLM Feedback: ${response.comment}\n` : '';
+					DiffWebviewProvider.createOrShow(context.extensionUri, {
+						original: originalText,
+						modified: commentText || originalText,
+						targetFile: editor.document.uri,
+						fileName: editor.document.fileName
+					});
 				}
 			} catch (error) {
 				vscode.window.showErrorMessage('Error getting LLM feedback: ' + error.message);
 			}
-		})
-	})
+		});
+	});
 
 	const sendSchemaKeywordsCommand = vscode.commands.registerCommand('extension.sendSchemaKeywordsToLLM', async () => {
 		try {
@@ -178,7 +188,7 @@ export function activate(context: ExtensionContext) {
 			}
 			const response = await client.sendRequest<{
 				success: boolean;
-				keywords?: Array<{ key_word: string, value_type: any, appearsInYaml?: boolean }>;
+				keywords?: { key_word: string, value_type: any, appearsInYaml?: boolean }[];
 				error?: string;
 			}>('llm-schema.extractKeywords', {
 				schema: placeholderSchema,

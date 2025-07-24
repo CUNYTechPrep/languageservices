@@ -325,9 +325,9 @@ function notifyClientError(message: string) {
 connection.onRequest('llm-feedback.insertComment', async (params: { uri: string, range: any, text: string }) => {
 	// use func parseYamlContent() here
 	console.log(params.text);
-	const doc = documents.get(params.uri)
+	const doc = documents.get(params.uri);
 	if (!doc) {
-		return { success: false, error: 'Document not found' }
+		return { success: false, error: 'Document not found' };
 	}
 	try {
 		const yamlData = parse(params.text);
@@ -392,7 +392,7 @@ connection.onRequest('llm-feedback.insertComment', async (params: { uri: string,
 		//hanlde error here
 		if (!response.ok) {
 			const error = await response.json() as { error: { message: string, code: string } };
-			console.log(error)
+			console.log(error);
 			throw new LLMError(error.error.code, error.error.message);
 		}
 
@@ -441,11 +441,11 @@ connection.onRequest('llm-feedback.insertComment', async (params: { uri: string,
 			//logErrorToFile(params.text, error)
 			const errorMessage = handleLLMError(error);
 			notifyClientError(errorMessage);
-			notifyClientError(error.message)
-			return { success: false, error: errorMessage }
+			notifyClientError(error.message);
+			return { success: false, error: errorMessage };
 		}
 	}
-})
+});
 
 connection.onRequest('llm-schema.extractKeywords', async (params: { schema: any, yamlText?: string }) => {
 	try {
