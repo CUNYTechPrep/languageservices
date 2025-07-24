@@ -1,6 +1,9 @@
 // Parse expression like 'a.b[0].c' into path array: ['a', 'b', '0', 'c']
 export function parseExpression(expr: string): string[] {
-	return expr.trim().split(/[.\[\]]+/).filter(Boolean);
+	return expr
+		.trim()
+		.split(/[.\[\]]+/)
+		.filter(Boolean);
 }
 
 // Get value at a path inside an object
