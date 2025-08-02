@@ -36,6 +36,8 @@ import * as path from 'path';
 import { resolveExpression, replacePlaceholders } from './expressions';
 import { processIncludes } from './include';
 
+import openRouterService from './llm/OpenRouterService';
+
 const OPENROUTER_KEY = process.env.OPENROUTER_KEY;
 
 interface ActionContext {
@@ -453,6 +455,26 @@ connection.onRequest(
 		}
 	}
 );
+
+connection.onRequest('prompt.refine', async (params: { uri: string }) => {
+	try {
+		const doc = documents.get(params.uri);
+		if (!doc) {
+			return { success: false, error: 'Document not found' };
+		}
+		const text = doc.getText();
+		if (!text) {
+			return { success: false, error: 'Document is empty' };
+		}
+
+		const refinedPrompt = await openRouterService.refinePrompt(text);
+		connection.console.log('Refined Prompt: ' + refinedPrompt);
+		return { success: true, refinedPrompt };
+	} catch (error) {
+		connection.console.error('Error refining prompt: ' + error);
+		return { success: false, error: 'Error refining prompt' };
+	}
+});
 
 connection.onRequest(
 	'llm-schema.extractKeywords',

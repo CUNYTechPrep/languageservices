@@ -103,12 +103,12 @@ export function activate(context: ExtensionContext) {
 				vscode.window.showErrorMessage('No active editor found.');
 				return;
 			}
-			const selection = editor.selection;
-			const text = editor.document.getText(selection);
-			if (!text) {
-				vscode.window.showErrorMessage('No text selected.');
-				return;
-			}
+			// const selection = editor.selection;
+			// const text = editor.document.getText(selection);
+			// if (!text) {
+			// 	vscode.window.showErrorMessage('No text selected.');
+			// 	return;
+			// }
 
 			await vscode.window.withProgress(
 				{
@@ -120,17 +120,9 @@ export function activate(context: ExtensionContext) {
 					try {
 						const response = await client.sendRequest<{
 							success: boolean;
-							comment?: string;
-							replaceSelection?: boolean;
-							replacement?: string;
-							position?: {
-								line: number;
-								character: number;
-							};
-						}>('llm-feedback.insertComment', {
+							refinedPrompt?: string;
+						}>('prompt.refine', {
 							uri: editor.document.uri.toString(),
-							range: selection,
-							text: text,
 						});
 						console.log(response);
 						if (response.success) {
@@ -150,9 +142,9 @@ export function activate(context: ExtensionContext) {
 							// 		editBuilder.insert(position, commentText);
 							// 	});
 							// }
-							const originalText = editor.document.getText(selection);
-							const commentText = response.comment
-								? `\n# LLM Feedback: ${response.comment}\n`
+							const originalText = editor.document.getText();
+							const commentText = response.refinedPrompt
+								? `${response.refinedPrompt}`
 								: '';
 							DiffWebviewProvider.createOrShow(context.extensionUri, {
 								original: originalText,
