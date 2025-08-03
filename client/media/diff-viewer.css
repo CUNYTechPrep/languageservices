@@ -1,0 +1,121 @@
+body {
+	font-family: var(--vscode-font-family);
+	padding: 0;
+	margin: 0;
+	background-color: var(--vscode-editor-background);
+	color: var(--vscode-editor-foreground);
+	height: 100vh;
+	display: flex;
+	flex-direction: column;
+}
+
+.header {
+	padding: 10px 15px;
+	background-color: var(--vscode-titleBar-activeBackground);
+	border-bottom: 1px solid var(--vscode-panel-border);
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+}
+
+.file-name {
+	font-weight: bold;
+	font-size: 14px;
+}
+
+.actions {
+	display: flex;
+	gap: 10px;
+}
+
+.btn {
+	padding: 6px 12px;
+	border: none;
+	border-radius: 3px;
+	cursor: pointer;
+	font-size: 12px;
+	font-family: var(--vscode-font-family);
+}
+
+.btn-accept {
+	background-color: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+}
+
+.btn-accept:hover {
+	background-color: var(--vscode-button-hoverBackground);
+}
+
+.btn-reject {
+	background-color: var(--vscode-button-secondaryBackground);
+	color: var(--vscode-button-secondaryForeground);
+}
+
+.btn-reject:hover {
+	background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.diff-container {
+	flex: 1;
+	display: flex;
+	overflow: hidden;
+}
+
+.diff-side {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	border-right: 1px solid var(--vscode-panel-border);
+}
+
+.diff-side:last-child {
+	border-right: none;
+}
+
+.diff-header {
+	padding: 8px 12px;
+	background-color: var(--vscode-editorGroupHeader-tabsBackground);
+	border-bottom: 1px solid var(--vscode-panel-border);
+	font-weight: 600;
+	font-size: 12px;
+	text-transform: uppercase;
+}
+
+.diff-content {
+	flex: 1;
+	overflow: auto;
+	padding: 12px;
+	font-family: var(--vscode-editor-font-family);
+	font-size: var(--vscode-editor-font-size);
+	line-height: var(--vscode-editor-lineHeight);
+	white-space: pre-wrap;
+	word-wrap: break-word;
+}
+
+.loading {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	height: 100%;
+	font-style: italic;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* Scrollbar styling */
+.diff-content::-webkit-scrollbar {
+	width: 10px;
+	height: 10px;
+}
+
+.diff-content::-webkit-scrollbar-track {
+	background: var(--vscode-scrollbarSlider-background);
+}
+
+.diff-content::-webkit-scrollbar-thumb {
+	background: var(--vscode-scrollbarSlider-hoverBackground);
+	border-radius: 5px;
+}
+
+.diff-content::-webkit-scrollbar-thumb:hover {
+	background: var(--vscode-scrollbarSlider-activeBackground);
+}
