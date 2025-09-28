@@ -43,7 +43,14 @@
           "description": "Traces the communication between VS Code and the language server."
         }
       }
-    }
+    },
+    "commands": [
+      {
+        "command": "extension.generateYamlScript",
+        "title": "Generate Yaml Script",
+        "category": "Tool"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

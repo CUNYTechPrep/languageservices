@@ -64,11 +64,28 @@ class OpenRouterService {
 		}
 	}
 
+	private parseYamlFromCodeBlockRegex(input: string): string {
+		const yamlMatch = input.match(/```yaml\s*\n?([\s\S]*?)\n?```/);
+
+		if (!yamlMatch) {
+			throw new Error('No YAML code block found');
+		}
+
+		const yamlContent = yamlMatch[1].trim();
+
+		try {
+			return yamlContent;
+		} catch (error) {
+			console.error('Failed to parse YAML:', error);
+			throw error;
+		}
+	}
+
 	async refinePrompt(prompt: string): Promise<string> {
 		const metaPrompt = `
 			You are a prompt engineering specialist focused on iteratively improving raw prompts.
-			Your task is to refine and enhance the user's prompt while keeping it in natural, 
-			unstructured format to preserve creative flow and allow for easy iteration.
+			Your task is to refine and enhance user prompts, 
+			maintaining the same output format (plain text or YAML) as the user's input.
 			Your role during iterations:
 
 			- Clarify and expand on the core objective
@@ -76,7 +93,9 @@ class OpenRouterService {
 			- Improve clarity and specificity
 			- Suggest enhancements the user might have overlooked
 			- Remove ambiguity and vague language
-			- Maintain the natural, conversational flow
+			- Maintain the original input's flow and format
+			- Clarify and state the task's domain if missing
+			- If input is plain text, keep a paragraph style.
 
 			Focus on improving:
 
@@ -86,8 +105,7 @@ class OpenRouterService {
 			- Feasibility: Ensure the request is actionable and realistic
 			- Context: Add relevant domain knowledge or constraints
 
-			Keep the output unstructured - write in natural language that flows well and captures all nuances. Do not impose rigid categories or formal structure yet.
-			Return **ONLY** the improved prompt in natural, unstructured format. DO NOT RETURN **Explanations or meta-commentary**.
+			Return **ONLY THE IMPROVED PROMPT** in the same format as the user's input. DO NOT RETURN **Explanations or meta-commentary**.
 		`;
 
 		const request: OpenRouterRequest = {
@@ -101,6 +119,51 @@ class OpenRouterService {
 
 		const response = await this.callAPI('chat/completions', request);
 		return response.choices[0].message?.content || '';
+	}
+
+	async createYamlScript(prompt: string): Promise<string> {
+		try {
+			const metaPrompt = `
+			You are an AI assistant that helps design domain-specific workflow scripts.
+			The user will provide:
+			- A short description of their goal (plain text).
+			- The target domain (e.g., fitness, marketing, research).
+
+			Your task:
+			1. Expand their description into a structured YAML workflow.
+			2. Use the following conventions:
+			- Output ONLY a YAML code block, no explanations.
+			- Use 'version', 'domain', 'workflow' as top-level keys.
+			- Use clear, consistent naming conventions.
+			- Each step must have: 'id', 'action', 'inputs', and optional 'outputs' or 'depends_on'.
+			- Each step must have action names like 'Summarize', 'GenerateCode', not descriptions.
+			- Make each step atomic and testable.
+			- Include proper error handling.
+			- Ensure it is scriptable, consistent, and machine-readable.
+			- Ensure the script is LLM-executable.
+			- Structure for easy editing and modification.
+
+			Return the result inside a YAML pseudo-code block.
+		`;
+
+			const request: OpenRouterRequest = {
+				model: 'deepseek/deepseek-chat-v3-0324:free',
+				models: ['shisa-ai/shisa-v2-llama3.3-70b:free', 'qwen/qwen3-32b:free'],
+				messages: [
+					{ role: 'system', content: metaPrompt },
+					{ role: 'user', content: prompt },
+				],
+			};
+
+			const response = await this.callAPI('chat/completions', request);
+			const content = response.choices[0].message?.content || '';
+			const yaml = this.parseYamlFromCodeBlockRegex(content);
+			console.log(yaml);
+			return yaml;
+		} catch (error) {
+			console.log(error);
+			return '';
+		}
 	}
 }
 

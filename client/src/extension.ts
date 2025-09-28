@@ -163,6 +163,66 @@ export function activate(context: ExtensionContext) {
 		}
 	);
 
+	const generateYamlScriptCommand = vscode.commands.registerCommand(
+		'extension.generateYamlScript',
+		async () => {
+			const editor = vscode.window.activeTextEditor;
+			if (!editor) {
+				vscode.window.showErrorMessage('No active editor found.');
+				return;
+			}
+
+			await vscode.window.withProgress(
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: 'Creating Yaml Script',
+					cancellable: false,
+				},
+				async () => {
+					try {
+						const response = await client.sendRequest<{
+							success: boolean;
+							yamlScript?: string;
+						}>('prompt.script', {
+							uri: editor.document.uri.toString(),
+						});
+						console.log(response);
+						if (response.success) {
+							// if (response.replaceSelection && response.replacement) {
+							// 	await editor.edit(editBuilder => {
+							// 		editBuilder.replace(selection, response.replacement);
+							// 	});
+							// } else if (response.comment) {
+							// 	await editor.edit(editBuilder => {
+							// 		const line = response.position !== undefined ?
+							// 			response.position.line :
+							// 			selection.end.line + 1;
+							// 		const position = new vscode.Position(line, 0);
+							// 		const currentLine = editor.document.lineAt(selection.start.line);
+							// 		const indent = currentLine.text.match(/^\s*/)?.[0] || '';
+							// 		const commentText = `\n${indent}# LLM Feedback: ${response.comment}\n`;
+							// 		editBuilder.insert(position, commentText);
+							// 	});
+							// }
+							const originalText = editor.document.getText();
+							const commentText = response.yamlScript ? `${response.yamlScript}` : '';
+							DiffWebviewProvider.createOrShow(context.extensionUri, {
+								original: originalText,
+								modified: commentText || originalText,
+								targetFile: editor.document.uri,
+								fileName: editor.document.fileName,
+							});
+						}
+					} catch (error) {
+						vscode.window.showErrorMessage(
+							'Error getting LLM feedback: ' + error.message
+						);
+					}
+				}
+			);
+		}
+	);
+
 	const sendSchemaKeywordsCommand = vscode.commands.registerCommand(
 		'extension.sendSchemaKeywordsToLLM',
 		async () => {
@@ -422,6 +482,7 @@ export function activate(context: ExtensionContext) {
 	context.subscriptions.push(
 		client,
 		feedbackCommand,
+		generateYamlScriptCommand,
 		sendSchemaKeywordsCommand,
 		replaceVariableCommand,
 		executeYamlActionsCommand,
