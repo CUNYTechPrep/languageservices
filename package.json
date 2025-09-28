@@ -48,7 +48,12 @@
       {
         "command": "extension.generateYamlScript",
         "title": "Generate Yaml Script",
-        "category": "Tool"
+        "category": "LSP"
+      },
+      {
+        "command": "extension.refineYamlScript",
+        "title": "Refine Yaml Script",
+        "category": "LSP"
       }
     ]
   },

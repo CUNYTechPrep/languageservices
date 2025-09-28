@@ -183,7 +183,7 @@ export function activate(context: ExtensionContext) {
 						const response = await client.sendRequest<{
 							success: boolean;
 							yamlScript?: string;
-						}>('prompt.script', {
+						}>('prompt.getScript', {
 							uri: editor.document.uri.toString(),
 						});
 						console.log(response);
@@ -204,6 +204,62 @@ export function activate(context: ExtensionContext) {
 							// 		editBuilder.insert(position, commentText);
 							// 	});
 							// }
+							const originalText = editor.document.getText();
+							const commentText = response.yamlScript ? `${response.yamlScript}` : '';
+							DiffWebviewProvider.createOrShow(context.extensionUri, {
+								original: originalText,
+								modified: commentText || originalText,
+								targetFile: editor.document.uri,
+								fileName: editor.document.fileName,
+							});
+						}
+					} catch (error) {
+						vscode.window.showErrorMessage(
+							'Error getting LLM feedback: ' + error.message
+						);
+					}
+				}
+			);
+		}
+	);
+
+	const refineYamlScriptCommand = vscode.commands.registerCommand(
+		'extension.refineYamlScript',
+		async () => {
+			const editor = vscode.window.activeTextEditor;
+			if (!editor) {
+				vscode.window.showErrorMessage('No active editor found.');
+				return;
+			}
+
+			const userInput = await vscode.window.showInputBox({
+				prompt: 'Enter text to guide the refinement (optional):',
+				placeHolder: 'e.g., "Make this script more concise" or "Add a step for logging"',
+			});
+
+			// If the user cancels the input box, userInput will be undefined
+			if (userInput === undefined) {
+				vscode.window.showInformationMessage('Refinement cancelled.');
+				return;
+			}
+
+			await vscode.window.withProgress(
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: 'Refining Yaml Script',
+					cancellable: false,
+				},
+				async () => {
+					try {
+						const response = await client.sendRequest<{
+							success: boolean;
+							yamlScript?: string;
+						}>('script.refine', {
+							uri: editor.document.uri.toString(),
+							prompt: userInput,
+						});
+						console.log(response);
+						if (response.success) {
 							const originalText = editor.document.getText();
 							const commentText = response.yamlScript ? `${response.yamlScript}` : '';
 							DiffWebviewProvider.createOrShow(context.extensionUri, {
@@ -483,6 +539,7 @@ export function activate(context: ExtensionContext) {
 		client,
 		feedbackCommand,
 		generateYamlScriptCommand,
+		refineYamlScriptCommand,
 		sendSchemaKeywordsCommand,
 		replaceVariableCommand,
 		executeYamlActionsCommand,

@@ -476,7 +476,7 @@ connection.onRequest('prompt.refine', async (params: { uri: string }) => {
 	}
 });
 
-connection.onRequest('prompt.script', async (params: { uri: string }) => {
+connection.onRequest('prompt.getScript', async (params: { uri: string }) => {
 	try {
 		const doc = documents.get(params.uri);
 		if (!doc) {
@@ -493,6 +493,26 @@ connection.onRequest('prompt.script', async (params: { uri: string }) => {
 	} catch (error) {
 		connection.console.error('Error creating yaml script: ' + error);
 		return { success: false, error: 'Error creating yaml script' };
+	}
+});
+
+connection.onRequest('script.refine', async (params: { uri: string; prompt: string }) => {
+	try {
+		const doc = documents.get(params.uri);
+		if (!doc) {
+			return { success: false, error: 'Document not found' };
+		}
+		const text = doc.getText();
+		if (!text) {
+			return { success: false, error: 'Document is empty' };
+		}
+
+		const yamlScript = await openRouterService.refineYamlScript(text, params.prompt);
+		connection.console.log('Yaml Script: ' + yamlScript);
+		return { success: true, yamlScript };
+	} catch (error) {
+		connection.console.error('Error refining yaml script: ' + error);
+		return { success: false, error: 'Error refining yaml script' };
 	}
 });
 
