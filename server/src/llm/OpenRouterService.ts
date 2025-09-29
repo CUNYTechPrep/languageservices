@@ -125,27 +125,33 @@ class OpenRouterService {
 	async createYamlScript(prompt: string): Promise<string> {
 		try {
 			const metaPrompt = `
-				You are an AI assistant that helps design domain-specific workflow scripts.
+				You are an AI assistant that designs **domain-specific workflow languages (DSLs) in YAML form**.
 				The user will provide:
 				- A short description of their goal (plain text).
 				- The target domain (e.g., fitness, marketing, research).
 
 				Your task:
-				1. Expand their description into a structured YAML workflow.
-				2. Use the following conventions:
-				- Output ONLY a YAML code block, no explanations.
-				- Use 'version', 'domain', 'workflow' as top-level keys.
-				- Use clear, consistent naming conventions.
-				- Each step must have: 'id', 'action', 'description', 'inputs', 
-				  and optional 'outputs' or 'depends_on'.
-				- Each step must have action names like 'Summarize', 'GenerateCode', not descriptions.
-				- Make each step atomic and testable.
-				- Include proper error handling.
-				- Ensure it is scriptable, consistent, and machine-readable.
-				- Ensure the script is LLM-executable.
-				- Structure for easy editing and modification.
+				1. Interpret the description and generate a **DSL-style YAML script** for that domain.
+				2. The script must not look like a rigid config file — it should feel like a **mini-language**.
+				3. Conventions:
+				- Output ONLY a YAML code block.
+				- Use a **title at the top** (e.g., "Fitness Plan", "Research Workflow").
+				- Each step begins with '- Step: <name>'.
+				- For the body of each step:
+					- Prefer **domain-specific keywords** instead of generic ones.
+					*Examples:*
+						- Research domain may use: 'Search', 'Summarize', 'Themes', 'Report'.
+						- Fitness domain may use: 'Exercise', 'Routine', 'Stretch', 'Nutrition'.
+						- Marketing domain may use: 'Audience', 'Campaign', 'Message', 'Channel'.
+					- Keep parameters structured as key-value pairs under those keywords.
+				- Use 'Produce' to declare outputs.
+				- Use 'After' for dependencies.
+				- Use 'If fails' for error handling.
+				4. Keywords should vary by domain — **do not always use the same schema**.
+				5. The result should be both **machine-readable** and **human-friendly**, 
+				like GitHub Actions or IBM's Prompt Declaration Language.
 
-				Return the result inside a YAML pseudo-code block.
+				Return only a YAML pseudo-code block.
 			`;
 
 			const request: OpenRouterRequest = {
@@ -172,39 +178,43 @@ class OpenRouterService {
 		try {
 			const metaPrompt = `
 				You are an AI assistant that refines workflow scripts written in YAML.  
-				The YAML describes domain-specific workflows that orchestrate AI actions.
+				These scripts are **domain-specific DSLs** that orchestrate AI-driven workflows.  
+				The DSL uses **human-friendly, domain-specific keywords** (e.g., 'Search', 'Summarize', 'Exercise', 'Campaign') instead of rigid config fields.
 
 				You will be given:
 				- The current YAML script.
 				- A refinement instruction (what to improve).
 
 				Your tasks:
-				1. Analyze the YAML for vague, missing, or incorrect elements.  
-				2. Apply the user's refinement instruction.  
+				1. Analyze the YAML for vague, missing, or inconsistent elements.  
+				2. Apply the user's refinement instruction while preserving the DSL style.  
 				3. Ensure the YAML is valid, scriptable, and follows these rules:
-				- Use 'version', 'domain', 'workflow' as top-level keys.
+				- Top-level: '<Domain> Workflow' or '<Domain> Plan'.  
 				- Each workflow step must include:
-					- 'id': unique step identifier
-					- 'action': action name
-					- 'description': action short description
-					- 'inputs: parameters required for that action
-					- optional 'outputs' and 'depends_on'
-				- Ensure references use '$step.output' format.
-				4. Output ONLY a YAML pseudo-code block, no explanations.
+					- 'Step': human-friendly step name.
+					- One or more **domain-specific keywords** (e.g., 'Search', 'Routine', 'Report') with their parameters.  
+					- 'Produce': outputs of the step (if any).  
+					- Optional modifiers:  
+					- 'After' → defines dependencies.  
+					- 'If fails' → error handling.  
+				4. If needed, add parameters or intermediate steps to make the workflow precise and executable.  
+				5. Output ONLY a YAML pseudo-code block, no explanations.
 
-				If needed, add parameters or intermediate steps to make the workflow more precise.
+				Current YAML Script:
+				${yamlScript}
 			`;
 			const request: OpenRouterRequest = {
 				model: 'deepseek/deepseek-chat-v3-0324:free',
 				models: ['shisa-ai/shisa-v2-llama3.3-70b:free', 'qwen/qwen3-32b:free'],
 				messages: [
 					{ role: 'system', content: metaPrompt },
-					{ role: 'user', content: prompt + yamlScript },
+					{ role: 'user', content: prompt },
 				],
 			};
 
 			const response = await this.callAPI('chat/completions', request);
 			const content = response.choices[0].message?.content || '';
+			console.log(content);
 			const yaml = this.parseYamlFromCodeBlockRegex(content);
 			console.log(yaml);
 			return yaml;

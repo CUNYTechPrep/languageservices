@@ -259,7 +259,7 @@ export function activate(context: ExtensionContext) {
 							prompt: userInput,
 						});
 						console.log(response);
-						if (response.success) {
+						if (response.success && response.yamlScript) {
 							const originalText = editor.document.getText();
 							const commentText = response.yamlScript ? `${response.yamlScript}` : '';
 							DiffWebviewProvider.createOrShow(context.extensionUri, {
@@ -268,10 +268,13 @@ export function activate(context: ExtensionContext) {
 								targetFile: editor.document.uri,
 								fileName: editor.document.fileName,
 							});
+						} else {
+							vscode.window.showErrorMessage('Error refining YAML Script');
+							return;
 						}
 					} catch (error) {
 						vscode.window.showErrorMessage(
-							'Error getting LLM feedback: ' + error.message
+							'Error refining YAML Script: ' + error.message
 						);
 					}
 				}
