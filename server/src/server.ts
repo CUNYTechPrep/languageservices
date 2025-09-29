@@ -516,6 +516,26 @@ connection.onRequest('script.refine', async (params: { uri: string; prompt: stri
 	}
 });
 
+connection.onRequest('script.test', async (params: { uri: string }) => {
+	try {
+		const doc = documents.get(params.uri);
+		if (!doc) {
+			return { success: false, error: 'Document not found' };
+		}
+		const text = doc.getText();
+		if (!text) {
+			return { success: false, error: 'Document is empty' };
+		}
+
+		const testResult = await openRouterService.mockTestYamlScript(text);
+		connection.console.log('Yaml Script result: ' + testResult);
+		return { success: true, testResult };
+	} catch (error) {
+		connection.console.error('Error testing yaml script: ' + error);
+		return { success: false, error: 'Error testing yaml script' };
+	}
+});
+
 connection.onRequest(
 	'llm-schema.extractKeywords',
 	async (params: { schema: any; yamlText?: string }) => {

@@ -54,6 +54,11 @@
         "command": "extension.refineYamlScript",
         "title": "Refine Yaml Script",
         "category": "LSP"
+      },
+      {
+        "command": "extension.testYamlScript",
+        "title": "Test Yaml Script",
+        "category": "LSP"
       }
     ]
   },

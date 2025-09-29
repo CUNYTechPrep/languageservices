@@ -279,6 +279,62 @@ export function activate(context: ExtensionContext) {
 		}
 	);
 
+	const testYamlScriptCommand = vscode.commands.registerCommand(
+		'extension.testYamlScript',
+		async () => {
+			const editor = vscode.window.activeTextEditor;
+			if (!editor) {
+				vscode.window.showErrorMessage('No active editor found.');
+				return;
+			}
+
+			await vscode.window.withProgress(
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: 'Testing Yaml Script',
+					cancellable: false,
+				},
+				async () => {
+					try {
+						const response = await client.sendRequest<{
+							success: boolean;
+							testResult?: string;
+						}>('script.test', {
+							uri: editor.document.uri.toString(),
+						});
+
+						if (response.success && response.testResult) {
+							// Create virtual markdown document
+							const document = await vscode.workspace.openTextDocument({
+								content: response.testResult,
+								language: 'markdown',
+							});
+
+							// Show in editor first
+							await vscode.window.showTextDocument(
+								document,
+								vscode.ViewColumn.Active
+							);
+
+							// Then immediately open markdown preview
+							await vscode.commands.executeCommand(
+								'markdown.showPreviewToSide',
+								document.uri
+							);
+
+							// Optional: Close the raw markdown editor to show only preview
+							// await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+						}
+					} catch (error) {
+						vscode.window.showErrorMessage(
+							'Error testing YAML script: ' + error.message
+						);
+					}
+				}
+			);
+		}
+	);
+
 	const sendSchemaKeywordsCommand = vscode.commands.registerCommand(
 		'extension.sendSchemaKeywordsToLLM',
 		async () => {
@@ -540,6 +596,7 @@ export function activate(context: ExtensionContext) {
 		feedbackCommand,
 		generateYamlScriptCommand,
 		refineYamlScriptCommand,
+		testYamlScriptCommand,
 		sendSchemaKeywordsCommand,
 		replaceVariableCommand,
 		executeYamlActionsCommand,

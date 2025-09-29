@@ -105,7 +105,8 @@ class OpenRouterService {
 			- Feasibility: Ensure the request is actionable and realistic
 			- Context: Add relevant domain knowledge or constraints
 
-			Return **ONLY THE IMPROVED PROMPT** in the same format as the user's input. DO NOT RETURN **Explanations or meta-commentary**.
+			Return **ONLY THE IMPROVED PROMPT** in the same format as the user's input. 
+			DO NOT RETURN **Explanations or meta-commentary**.
 		`;
 
 		const request: OpenRouterRequest = {
@@ -135,7 +136,8 @@ class OpenRouterService {
 				- Output ONLY a YAML code block, no explanations.
 				- Use 'version', 'domain', 'workflow' as top-level keys.
 				- Use clear, consistent naming conventions.
-				- Each step must have: 'id', 'action', 'description', 'inputs', and optional 'outputs' or 'depends_on'.
+				- Each step must have: 'id', 'action', 'description', 'inputs', 
+				  and optional 'outputs' or 'depends_on'.
 				- Each step must have action names like 'Summarize', 'GenerateCode', not descriptions.
 				- Make each step atomic and testable.
 				- Include proper error handling.
@@ -206,6 +208,38 @@ class OpenRouterService {
 			const yaml = this.parseYamlFromCodeBlockRegex(content);
 			console.log(yaml);
 			return yaml;
+		} catch (error) {
+			console.log(error);
+			return '';
+		}
+	}
+
+	async mockTestYamlScript(yamlScript: string): Promise<string> {
+		try {
+			const metaPrompt = `
+				You are a YAML DSL interpreter that executes YAML scripts to generate actual code. 
+				Your task is to read the YAML script and produce the requested deliverables.
+				Execute each workflow step in order, generating code/files as specified:
+				For each step in workflow:
+				1. Read step.action and step.description
+				2. Use step.inputs to understand what data/context you have
+				3. Generate the code/content described in step.outputs
+				4. Handle any error conditions per step.error_handling
+				5. Move to next step only after current step validation passes
+			`;
+			const request: OpenRouterRequest = {
+				model: 'deepseek/deepseek-chat-v3-0324:free',
+				models: ['shisa-ai/shisa-v2-llama3.3-70b:free', 'qwen/qwen3-32b:free'],
+				messages: [
+					{ role: 'system', content: metaPrompt },
+					{ role: 'user', content: yamlScript },
+				],
+			};
+
+			const response = await this.callAPI('chat/completions', request);
+			const content = response.choices[0].message?.content || '';
+			console.log(content);
+			return content;
 		} catch (error) {
 			console.log(error);
 			return '';
