@@ -183,11 +183,12 @@ export function activate(context: ExtensionContext) {
 						const response = await client.sendRequest<{
 							success: boolean;
 							yamlScript?: string;
+							error?: string;
 						}>('prompt.getScript', {
 							uri: editor.document.uri.toString(),
 						});
 						console.log(response);
-						if (response.success) {
+						if (response.error) {
 							// if (response.replaceSelection && response.replacement) {
 							// 	await editor.edit(editBuilder => {
 							// 		editBuilder.replace(selection, response.replacement);
@@ -204,15 +205,18 @@ export function activate(context: ExtensionContext) {
 							// 		editBuilder.insert(position, commentText);
 							// 	});
 							// }
-							const originalText = editor.document.getText();
-							const commentText = response.yamlScript ? `${response.yamlScript}` : '';
-							DiffWebviewProvider.createOrShow(context.extensionUri, {
-								original: originalText,
-								modified: commentText || originalText,
-								targetFile: editor.document.uri,
-								fileName: editor.document.fileName,
-							});
+							vscode.window.showErrorMessage('Error getting YAML Script');
+							return;
 						}
+
+						const originalText = editor.document.getText();
+						const commentText = response.yamlScript ? `${response.yamlScript}` : '';
+						DiffWebviewProvider.createOrShow(context.extensionUri, {
+							original: originalText,
+							modified: commentText || originalText,
+							targetFile: editor.document.uri,
+							fileName: editor.document.fileName,
+						});
 					} catch (error) {
 						vscode.window.showErrorMessage(
 							'Error getting LLM feedback: ' + error.message

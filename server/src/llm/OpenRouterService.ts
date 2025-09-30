@@ -68,20 +68,15 @@ class OpenRouterService {
 		const yamlMatch = input.match(/```yaml\s*\n?([\s\S]*?)\n?```/);
 
 		if (!yamlMatch) {
-			throw new Error('No YAML code block found');
+			return input.trim();
 		}
 
 		const yamlContent = yamlMatch[1].trim();
 
-		try {
-			return yamlContent;
-		} catch (error) {
-			console.error('Failed to parse YAML:', error);
-			throw error;
-		}
+		return yamlContent;
 	}
 
-	async refinePrompt(prompt: string): Promise<string> {
+	async refinePrompt(userPrompt: string): Promise<string> {
 		const metaPrompt = `
 			You are a prompt engineering specialist focused on iteratively improving raw prompts.
 			Your task is to refine and enhance user prompts, 
@@ -114,7 +109,7 @@ class OpenRouterService {
 			models: ['shisa-ai/shisa-v2-llama3.3-70b:free', 'qwen/qwen3-32b:free'],
 			messages: [
 				{ role: 'system', content: metaPrompt },
-				{ role: 'user', content: prompt },
+				{ role: 'user', content: userPrompt },
 			],
 		};
 
@@ -127,16 +122,15 @@ class OpenRouterService {
 			const metaPrompt = `
 				You are an AI assistant that designs **domain-specific workflow languages (DSLs) in YAML form**.
 				The user will provide:
-				- A short description of their goal (plain text).
-				- The target domain (e.g., fitness, marketing, research).
+				- A short description of their goal (plain text) with the target domain.
 
 				Your task:
 				1. Interpret the description and generate a **DSL-style YAML script** for that domain.
 				2. The script must not look like a rigid config file — it should feel like a **mini-language**.
 				3. Conventions:
 				- Output ONLY a YAML code block.
-				- Use a **title at the top** (e.g., "Fitness Plan", "Research Workflow").
-				- Each step begins with '- Step: <name>'.
+				- Top-level: 'version', 'domain', 'workflow' and 'title' with '<Domain> Workflow' or '<Domain> Plan' values.
+				- Each step begins with '- Step: <name>'. <name> should be action words (e.g. 'Search', 'Summarize')
 				- For the body of each step:
 					- Prefer **domain-specific keywords** instead of generic ones.
 					*Examples:*
@@ -152,15 +146,15 @@ class OpenRouterService {
 				like GitHub Actions or IBM's Prompt Declaration Language.
 
 				Return only a YAML pseudo-code block.
+
+				User's description:
+				${prompt}
 			`;
 
 			const request: OpenRouterRequest = {
 				model: 'deepseek/deepseek-chat-v3-0324:free',
 				models: ['shisa-ai/shisa-v2-llama3.3-70b:free', 'qwen/qwen3-32b:free'],
-				messages: [
-					{ role: 'system', content: metaPrompt },
-					{ role: 'user', content: prompt },
-				],
+				messages: [{ role: 'user', content: metaPrompt }],
 			};
 
 			const response = await this.callAPI('chat/completions', request);
@@ -174,7 +168,7 @@ class OpenRouterService {
 		}
 	}
 
-	async refineYamlScript(yamlScript: string, prompt: string): Promise<string> {
+	async refineYamlScript(yamlScript: string, userPrompt: string): Promise<string> {
 		try {
 			const metaPrompt = `
 				You are an AI assistant that refines workflow scripts written in YAML.  
@@ -189,8 +183,8 @@ class OpenRouterService {
 				1. Analyze the YAML for vague, missing, or inconsistent elements.  
 				2. Apply the user's refinement instruction while preserving the DSL style.  
 				3. Ensure the YAML is valid, scriptable, and follows these rules:
-				- Top-level: '<Domain> Workflow' or '<Domain> Plan'.  
-				- Each workflow step must include:
+				- Top-level: 'version', 'domain', 'workflow' and 'title' with '<Domain> Workflow' or '<Domain> Plan' values.  
+				- Each workflow step inside 'workflow' must include:
 					- 'Step': human-friendly step name.
 					- One or more **domain-specific keywords** (e.g., 'Search', 'Routine', 'Report') with their parameters.  
 					- 'Produce': outputs of the step (if any).  
@@ -200,15 +194,15 @@ class OpenRouterService {
 				4. If needed, add parameters or intermediate steps to make the workflow precise and executable.  
 				5. Output ONLY a YAML pseudo-code block, no explanations.
 
-				Current YAML Script:
-				${yamlScript}
+				Current YAML Script (between <<< >>>):
+				<<<${yamlScript}>>>
 			`;
 			const request: OpenRouterRequest = {
 				model: 'deepseek/deepseek-chat-v3-0324:free',
 				models: ['shisa-ai/shisa-v2-llama3.3-70b:free', 'qwen/qwen3-32b:free'],
 				messages: [
 					{ role: 'system', content: metaPrompt },
-					{ role: 'user', content: prompt },
+					{ role: 'user', content: userPrompt },
 				],
 			};
 
@@ -226,24 +220,39 @@ class OpenRouterService {
 
 	async mockTestYamlScript(yamlScript: string): Promise<string> {
 		try {
-			const metaPrompt = `
-				You are a YAML DSL interpreter that executes YAML scripts to generate actual code. 
-				Your task is to read the YAML script and produce the requested deliverables.
-				Execute each workflow step in order, generating code/files as specified:
-				For each step in workflow:
-				1. Read step.action and step.description
-				2. Use step.inputs to understand what data/context you have
-				3. Generate the code/content described in step.outputs
-				4. Handle any error conditions per step.error_handling
-				5. Move to next step only after current step validation passes
+			const prompt = `
+				You are a YAML DSL interpreter that executes YAML scripts written in a domain-specific workflow language.  
+				Each YAML file defines a workflow using **human-friendly, domain-specific keywords** (e.g., 'Search', 'Exercise', 'Campaign') rather than rigid config fields.  
+
+				Your task:  
+				- Read the YAML workflow.  
+				- Interpret each step in order.  
+				- Generate the deliverables described (code, text, files, or structured data).  
+
+				Execution rules:  
+				1. Identify each step by its 'Step' name.  
+				2. Read the **domain-specific keywords** inside the step (e.g., 'Search', 'Exercise', 'Routine', 'Summarize').  
+				- Treat these as the **action definitions**.  
+				3. Use the keyword's parameters ('Query', 'Sources', 'Duration', 'Audience', etc.) as the **context for generation**.  
+				4. If present, honor workflow modifiers:
+				- 'Produce' → define the outputs to generate.  
+				- 'After' → run only after the referenced step succeeds.  
+				- 'If fails' → handle errors by applying the fallback instruction.  
+				5. Validate that each step produced the expected deliverable before continuing.  
+				6. Continue until the workflow completes.  
+
+				Important:  
+				- The DSL may differ between domains. Always respect the keywords as written.  
+				- Interpret the script in a **machine-readable but human-friendly** way, like a mini programming language.  
+				- Output only the requested deliverables — no explanations.
+
+				YAML Script:
+				${yamlScript}
 			`;
 			const request: OpenRouterRequest = {
 				model: 'deepseek/deepseek-chat-v3-0324:free',
 				models: ['shisa-ai/shisa-v2-llama3.3-70b:free', 'qwen/qwen3-32b:free'],
-				messages: [
-					{ role: 'system', content: metaPrompt },
-					{ role: 'user', content: yamlScript },
-				],
+				messages: [{ role: 'user', content: prompt }],
 			};
 
 			const response = await this.callAPI('chat/completions', request);

@@ -488,6 +488,10 @@ connection.onRequest('prompt.getScript', async (params: { uri: string }) => {
 		}
 
 		const yamlScript = await openRouterService.createYamlScript(text);
+		if (yamlScript === '' || yamlScript === undefined) {
+			connection.console.error('Error creating yaml script');
+			return { success: false, error: 'Error creating yaml script' };
+		}
 		connection.console.log('Yaml Script: ' + yamlScript);
 		return { success: true, yamlScript };
 	} catch (error) {
