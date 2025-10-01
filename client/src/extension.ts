@@ -14,6 +14,8 @@ import {
 	TransportKind,
 } from 'vscode-languageclient/node';
 
+import { DiffWebviewProvider } from './WebviewProvider';
+
 let client: LanguageClient;
 
 export function activate(context: ExtensionContext) {
@@ -101,12 +103,12 @@ export function activate(context: ExtensionContext) {
 				vscode.window.showErrorMessage('No active editor found.');
 				return;
 			}
-			const selection = editor.selection;
-			const text = editor.document.getText(selection);
-			if (!text) {
-				vscode.window.showErrorMessage('No text selected.');
-				return;
-			}
+			// const selection = editor.selection;
+			// const text = editor.document.getText(selection);
+			// if (!text) {
+			// 	vscode.window.showErrorMessage('No text selected.');
+			// 	return;
+			// }
 
 			await vscode.window.withProgress(
 				{
@@ -118,44 +120,197 @@ export function activate(context: ExtensionContext) {
 					try {
 						const response = await client.sendRequest<{
 							success: boolean;
-							comment?: string;
-							replaceSelection?: boolean;
-							replacement?: string;
-							position?: {
-								line: number;
-								character: number;
-							};
-						}>('llm-feedback.insertComment', {
+							refinedPrompt?: string;
+							error?: string;
+						}>('prompt.refine', {
 							uri: editor.document.uri.toString(),
-							range: selection,
-							text: text,
 						});
 						console.log(response);
-						if (response.success) {
-							if (response.replaceSelection && response.replacement) {
-								await editor.edit(editBuilder => {
-									editBuilder.replace(selection, response.replacement);
-								});
-							} else if (response.comment) {
-								await editor.edit(editBuilder => {
-									const line =
-										response.position !== undefined
-											? response.position.line
-											: selection.end.line + 1;
-									const position = new vscode.Position(line, 0);
-									const currentLine = editor.document.lineAt(
-										selection.start.line
-									);
-									const indent = currentLine.text.match(/^\s*/)?.[0] || '';
-									const commentText = `\n${indent}# LLM Feedback: ${response.comment}\n`;
-									editBuilder.insert(position, commentText);
-								});
-							}
+
+						if (!response.success || response.error) {
+							vscode.window.showErrorMessage('Error getting LLM feedback');
+							return;
 						}
+						const originalText = editor.document.getText();
+						const commentText = response.refinedPrompt
+							? `${response.refinedPrompt}`
+							: '';
+						DiffWebviewProvider.createOrShow(context.extensionUri, {
+							original: originalText,
+							modified: commentText || originalText,
+							targetFile: editor.document.uri,
+							fileName: editor.document.fileName,
+						});
 					} catch (error) {
 						vscode.window.showErrorMessage(
 							'Error getting LLM feedback: ' + error.message
 						);
+						return;
+					}
+				}
+			);
+		}
+	);
+
+	const generateYamlScriptCommand = vscode.commands.registerCommand(
+		'extension.generateYamlScript',
+		async () => {
+			const editor = vscode.window.activeTextEditor;
+			if (!editor) {
+				vscode.window.showErrorMessage('No active editor found.');
+				return;
+			}
+
+			await vscode.window.withProgress(
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: 'Creating Yaml Script',
+					cancellable: false,
+				},
+				async () => {
+					try {
+						const response = await client.sendRequest<{
+							success: boolean;
+							yamlScript?: string;
+							error?: string;
+						}>('prompt.getScript', {
+							uri: editor.document.uri.toString(),
+						});
+						console.log(response);
+						if (!response.success || response.error) {
+							vscode.window.showErrorMessage('Error getting YAML Script');
+							return;
+						}
+
+						const originalText = editor.document.getText();
+						const commentText = response.yamlScript ? `${response.yamlScript}` : '';
+						DiffWebviewProvider.createOrShow(context.extensionUri, {
+							original: originalText,
+							modified: commentText || originalText,
+							targetFile: editor.document.uri,
+							fileName: editor.document.fileName,
+						});
+					} catch (error) {
+						vscode.window.showErrorMessage(
+							'Error getting LLM feedback: ' + error.message
+						);
+						return;
+					}
+				}
+			);
+		}
+	);
+
+	const refineYamlScriptCommand = vscode.commands.registerCommand(
+		'extension.refineYamlScript',
+		async () => {
+			const editor = vscode.window.activeTextEditor;
+			if (!editor) {
+				vscode.window.showErrorMessage('No active editor found.');
+				return;
+			}
+
+			const userInput = await vscode.window.showInputBox({
+				prompt: 'Enter text to guide the refinement (optional):',
+				placeHolder: 'e.g., "Make this script more concise" or "Add a step for logging"',
+			});
+
+			// If the user cancels the input box, userInput will be undefined
+			if (userInput === undefined) {
+				vscode.window.showInformationMessage('Refinement cancelled.');
+				return;
+			}
+
+			await vscode.window.withProgress(
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: 'Refining Yaml Script',
+					cancellable: false,
+				},
+				async () => {
+					try {
+						const response = await client.sendRequest<{
+							success: boolean;
+							yamlScript?: string;
+							error?: string;
+						}>('script.refine', {
+							uri: editor.document.uri.toString(),
+							prompt: userInput,
+						});
+						console.log(response);
+						if (!response.success || response.error) {
+							vscode.window.showErrorMessage('Error refining YAML Script');
+							return;
+						}
+
+						const originalText = editor.document.getText();
+						const commentText = response.yamlScript ? `${response.yamlScript}` : '';
+						DiffWebviewProvider.createOrShow(context.extensionUri, {
+							original: originalText,
+							modified: commentText || originalText,
+							targetFile: editor.document.uri,
+							fileName: editor.document.fileName,
+						});
+					} catch (error) {
+						vscode.window.showErrorMessage(
+							'Error refining YAML Script: ' + error.message
+						);
+						return;
+					}
+				}
+			);
+		}
+	);
+
+	const testYamlScriptCommand = vscode.commands.registerCommand(
+		'extension.testYamlScript',
+		async () => {
+			const editor = vscode.window.activeTextEditor;
+			if (!editor) {
+				vscode.window.showErrorMessage('No active editor found.');
+				return;
+			}
+
+			await vscode.window.withProgress(
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: 'Testing Yaml Script',
+					cancellable: false,
+				},
+				async () => {
+					try {
+						const response = await client.sendRequest<{
+							success: boolean;
+							testResult?: string;
+							error?: string;
+						}>('script.test', {
+							uri: editor.document.uri.toString(),
+						});
+
+						if (!response.success || response.error) {
+							vscode.window.showErrorMessage('Error testing YAML Script');
+							return;
+						}
+
+						// Create virtual markdown document
+						const document = await vscode.workspace.openTextDocument({
+							content: response.testResult,
+							language: 'markdown',
+						});
+
+						// Show in editor first
+						await vscode.window.showTextDocument(document, vscode.ViewColumn.Active);
+
+						// Then immediately open markdown preview
+						await vscode.commands.executeCommand(
+							'markdown.showPreviewToSide',
+							document.uri
+						);
+					} catch (error) {
+						vscode.window.showErrorMessage(
+							'Error testing YAML script: ' + error.message
+						);
+						return;
 					}
 				}
 			);
@@ -190,11 +345,11 @@ export function activate(context: ExtensionContext) {
 				}
 				const response = await client.sendRequest<{
 					success: boolean;
-					keywords?: Array<{
+					keywords?: {
 						key_word: string;
 						value_type: any;
 						appearsInYaml?: boolean;
-					}>;
+					}[];
 					error?: string;
 				}>('llm-schema.extractKeywords', {
 					schema: placeholderSchema,
@@ -421,6 +576,9 @@ export function activate(context: ExtensionContext) {
 	context.subscriptions.push(
 		client,
 		feedbackCommand,
+		generateYamlScriptCommand,
+		refineYamlScriptCommand,
+		testYamlScriptCommand,
 		sendSchemaKeywordsCommand,
 		replaceVariableCommand,
 		executeYamlActionsCommand,
