@@ -121,42 +121,31 @@ export function activate(context: ExtensionContext) {
 						const response = await client.sendRequest<{
 							success: boolean;
 							refinedPrompt?: string;
+							error?: string;
 						}>('prompt.refine', {
 							uri: editor.document.uri.toString(),
 						});
 						console.log(response);
-						if (response.success) {
-							// if (response.replaceSelection && response.replacement) {
-							// 	await editor.edit(editBuilder => {
-							// 		editBuilder.replace(selection, response.replacement);
-							// 	});
-							// } else if (response.comment) {
-							// 	await editor.edit(editBuilder => {
-							// 		const line = response.position !== undefined ?
-							// 			response.position.line :
-							// 			selection.end.line + 1;
-							// 		const position = new vscode.Position(line, 0);
-							// 		const currentLine = editor.document.lineAt(selection.start.line);
-							// 		const indent = currentLine.text.match(/^\s*/)?.[0] || '';
-							// 		const commentText = `\n${indent}# LLM Feedback: ${response.comment}\n`;
-							// 		editBuilder.insert(position, commentText);
-							// 	});
-							// }
-							const originalText = editor.document.getText();
-							const commentText = response.refinedPrompt
-								? `${response.refinedPrompt}`
-								: '';
-							DiffWebviewProvider.createOrShow(context.extensionUri, {
-								original: originalText,
-								modified: commentText || originalText,
-								targetFile: editor.document.uri,
-								fileName: editor.document.fileName,
-							});
+
+						if (!response.success || response.error) {
+							vscode.window.showErrorMessage('Error getting LLM feedback');
+							return;
 						}
+						const originalText = editor.document.getText();
+						const commentText = response.refinedPrompt
+							? `${response.refinedPrompt}`
+							: '';
+						DiffWebviewProvider.createOrShow(context.extensionUri, {
+							original: originalText,
+							modified: commentText || originalText,
+							targetFile: editor.document.uri,
+							fileName: editor.document.fileName,
+						});
 					} catch (error) {
 						vscode.window.showErrorMessage(
 							'Error getting LLM feedback: ' + error.message
 						);
+						return;
 					}
 				}
 			);
@@ -188,23 +177,7 @@ export function activate(context: ExtensionContext) {
 							uri: editor.document.uri.toString(),
 						});
 						console.log(response);
-						if (response.error) {
-							// if (response.replaceSelection && response.replacement) {
-							// 	await editor.edit(editBuilder => {
-							// 		editBuilder.replace(selection, response.replacement);
-							// 	});
-							// } else if (response.comment) {
-							// 	await editor.edit(editBuilder => {
-							// 		const line = response.position !== undefined ?
-							// 			response.position.line :
-							// 			selection.end.line + 1;
-							// 		const position = new vscode.Position(line, 0);
-							// 		const currentLine = editor.document.lineAt(selection.start.line);
-							// 		const indent = currentLine.text.match(/^\s*/)?.[0] || '';
-							// 		const commentText = `\n${indent}# LLM Feedback: ${response.comment}\n`;
-							// 		editBuilder.insert(position, commentText);
-							// 	});
-							// }
+						if (!response.success || response.error) {
 							vscode.window.showErrorMessage('Error getting YAML Script');
 							return;
 						}
@@ -221,6 +194,7 @@ export function activate(context: ExtensionContext) {
 						vscode.window.showErrorMessage(
 							'Error getting LLM feedback: ' + error.message
 						);
+						return;
 					}
 				}
 			);
@@ -258,28 +232,30 @@ export function activate(context: ExtensionContext) {
 						const response = await client.sendRequest<{
 							success: boolean;
 							yamlScript?: string;
+							error?: string;
 						}>('script.refine', {
 							uri: editor.document.uri.toString(),
 							prompt: userInput,
 						});
 						console.log(response);
-						if (response.success && response.yamlScript) {
-							const originalText = editor.document.getText();
-							const commentText = response.yamlScript ? `${response.yamlScript}` : '';
-							DiffWebviewProvider.createOrShow(context.extensionUri, {
-								original: originalText,
-								modified: commentText || originalText,
-								targetFile: editor.document.uri,
-								fileName: editor.document.fileName,
-							});
-						} else {
+						if (!response.success || response.error) {
 							vscode.window.showErrorMessage('Error refining YAML Script');
 							return;
 						}
+
+						const originalText = editor.document.getText();
+						const commentText = response.yamlScript ? `${response.yamlScript}` : '';
+						DiffWebviewProvider.createOrShow(context.extensionUri, {
+							original: originalText,
+							modified: commentText || originalText,
+							targetFile: editor.document.uri,
+							fileName: editor.document.fileName,
+						});
 					} catch (error) {
 						vscode.window.showErrorMessage(
 							'Error refining YAML Script: ' + error.message
 						);
+						return;
 					}
 				}
 			);
@@ -306,36 +282,35 @@ export function activate(context: ExtensionContext) {
 						const response = await client.sendRequest<{
 							success: boolean;
 							testResult?: string;
+							error?: string;
 						}>('script.test', {
 							uri: editor.document.uri.toString(),
 						});
 
-						if (response.success && response.testResult) {
-							// Create virtual markdown document
-							const document = await vscode.workspace.openTextDocument({
-								content: response.testResult,
-								language: 'markdown',
-							});
-
-							// Show in editor first
-							await vscode.window.showTextDocument(
-								document,
-								vscode.ViewColumn.Active
-							);
-
-							// Then immediately open markdown preview
-							await vscode.commands.executeCommand(
-								'markdown.showPreviewToSide',
-								document.uri
-							);
-
-							// Optional: Close the raw markdown editor to show only preview
-							// await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+						if (!response.success || response.error) {
+							vscode.window.showErrorMessage('Error testing YAML Script');
+							return;
 						}
+
+						// Create virtual markdown document
+						const document = await vscode.workspace.openTextDocument({
+							content: response.testResult,
+							language: 'markdown',
+						});
+
+						// Show in editor first
+						await vscode.window.showTextDocument(document, vscode.ViewColumn.Active);
+
+						// Then immediately open markdown preview
+						await vscode.commands.executeCommand(
+							'markdown.showPreviewToSide',
+							document.uri
+						);
 					} catch (error) {
 						vscode.window.showErrorMessage(
 							'Error testing YAML script: ' + error.message
 						);
+						return;
 					}
 				}
 			);

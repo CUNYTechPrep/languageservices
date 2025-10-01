@@ -36,7 +36,8 @@ import * as path from 'path';
 import { resolveExpression, replacePlaceholders } from './expressions';
 import { processIncludes } from './include';
 
-import openRouterService from './llm/OpenRouterService';
+import yamlWorkflowBuilder from './llm/YamlWorkflowBuilder';
+import yamlExecutor from './YamlExecutor';
 
 const OPENROUTER_KEY = process.env.OPENROUTER_KEY;
 
@@ -467,8 +468,14 @@ connection.onRequest('prompt.refine', async (params: { uri: string }) => {
 			return { success: false, error: 'Document is empty' };
 		}
 
-		const refinedPrompt = await openRouterService.refinePrompt(text);
+		const refinedPrompt = await yamlWorkflowBuilder.refinePrompt(text);
 		connection.console.log('Refined Prompt: ' + refinedPrompt);
+
+		if (!refinedPrompt || refinedPrompt.trim() === '') {
+			connection.console.error('Error refining prompt: empty result');
+			return { success: false, error: 'Error refining prompt' };
+		}
+
 		return { success: true, refinedPrompt };
 	} catch (error) {
 		connection.console.error('Error refining prompt: ' + error);
@@ -487,8 +494,8 @@ connection.onRequest('prompt.getScript', async (params: { uri: string }) => {
 			return { success: false, error: 'Document is empty' };
 		}
 
-		const yamlScript = await openRouterService.createYamlScript(text);
-		if (yamlScript === '' || yamlScript === undefined) {
+		const yamlScript = await yamlWorkflowBuilder.createYamlScript(text);
+		if (!yamlScript || yamlScript.trim() === '') {
 			connection.console.error('Error creating yaml script');
 			return { success: false, error: 'Error creating yaml script' };
 		}
@@ -511,7 +518,11 @@ connection.onRequest('script.refine', async (params: { uri: string; prompt: stri
 			return { success: false, error: 'Document is empty' };
 		}
 
-		const yamlScript = await openRouterService.refineYamlScript(text, params.prompt);
+		const yamlScript = await yamlWorkflowBuilder.refineYamlScript(text, params.prompt);
+		if (!yamlScript || yamlScript.trim() === '') {
+			connection.console.error('Error refining yaml script');
+			return { success: false, error: 'Error refining yaml script' };
+		}
 		connection.console.log('Yaml Script: ' + yamlScript);
 		return { success: true, yamlScript };
 	} catch (error) {
@@ -531,7 +542,11 @@ connection.onRequest('script.test', async (params: { uri: string }) => {
 			return { success: false, error: 'Document is empty' };
 		}
 
-		const testResult = await openRouterService.mockTestYamlScript(text);
+		const testResult = await yamlExecutor.mockTestYamlScript(text);
+		if (!testResult || testResult.trim() === '') {
+			connection.console.error('Error testing yaml script');
+			return { success: false, error: 'Error testing yaml script' };
+		}
 		connection.console.log('Yaml Script result: ' + testResult);
 		return { success: true, testResult };
 	} catch (error) {

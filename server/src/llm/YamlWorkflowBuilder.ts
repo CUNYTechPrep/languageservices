@@ -1,81 +1,7 @@
-import { LLMError } from '../errorHandler';
+import openRouterClient, { OpenRouterRequest } from './OpenRouterClient';
+import { parseYamlFromCodeBlockRegex } from './utils';
 
-interface OpenRouterRequest {
-	model: string;
-	messages: {
-		role: 'user' | 'system';
-		content: string;
-	}[];
-	models?: string[];
-	max_tokens?: number;
-	temperature?: number;
-	top_p?: number;
-	stop?: string | string[];
-}
-
-interface OpenRouterResponse {
-	choices: {
-		message?: {
-			role: string;
-			content: string;
-		};
-		error?: {
-			message: string;
-			code: string;
-		};
-	}[];
-}
-
-class OpenRouterService {
-	private apiKey: string;
-	private apiUrl: string;
-
-	constructor() {
-		this.apiKey = process.env.OPENROUTER_KEY || '';
-		this.apiUrl = process.env.OPENROUTER_URL || 'https://openrouter.ai/api/v1';
-	}
-
-	private async callAPI(
-		endpoint: string,
-		request: OpenRouterRequest
-	): Promise<OpenRouterResponse> {
-		try {
-			const response = await fetch(`${this.apiUrl}/${endpoint}`, {
-				method: 'POST',
-				headers: {
-					Authorization: `Bearer ${this.apiKey}`,
-					'Content-Type': 'application/json',
-				},
-				body: JSON.stringify(request),
-			});
-			if (!response.ok) {
-				const error = (await response.json()) as {
-					error: { message: string; code: string };
-				};
-				console.log(error);
-				throw new LLMError(error.error.code, error.error.message);
-			}
-			// Parse the response as JSON
-			const data = (await response.json()) as OpenRouterResponse;
-			return data;
-		} catch (error) {
-			console.error('Error calling OpenRouter API:', error);
-			throw error;
-		}
-	}
-
-	private parseYamlFromCodeBlockRegex(input: string): string {
-		const yamlMatch = input.match(/```yaml\s*\n?([\s\S]*?)\n?```/);
-
-		if (!yamlMatch) {
-			return input.trim();
-		}
-
-		const yamlContent = yamlMatch[1].trim();
-
-		return yamlContent;
-	}
-
+export class YamlWorkflowBuilder {
 	async refinePrompt(userPrompt: string): Promise<string> {
 		const metaPrompt = `
 			You are a prompt engineering specialist focused on iteratively improving raw prompts.
@@ -113,7 +39,7 @@ class OpenRouterService {
 			],
 		};
 
-		const response = await this.callAPI('chat/completions', request);
+		const response = await openRouterClient.callAPI('chat/completions', request);
 		return response.choices[0].message?.content || '';
 	}
 
@@ -157,9 +83,9 @@ class OpenRouterService {
 				messages: [{ role: 'user', content: metaPrompt }],
 			};
 
-			const response = await this.callAPI('chat/completions', request);
+			const response = await openRouterClient.callAPI('chat/completions', request);
 			const content = response.choices[0].message?.content || '';
-			const yaml = this.parseYamlFromCodeBlockRegex(content);
+			const yaml = parseYamlFromCodeBlockRegex(content);
 			console.log(yaml);
 			return yaml;
 		} catch (error) {
@@ -206,10 +132,10 @@ class OpenRouterService {
 				],
 			};
 
-			const response = await this.callAPI('chat/completions', request);
+			const response = await openRouterClient.callAPI('chat/completions', request);
 			const content = response.choices[0].message?.content || '';
 			console.log(content);
-			const yaml = this.parseYamlFromCodeBlockRegex(content);
+			const yaml = parseYamlFromCodeBlockRegex(content);
 			console.log(yaml);
 			return yaml;
 		} catch (error) {
@@ -217,54 +143,7 @@ class OpenRouterService {
 			return '';
 		}
 	}
-
-	async mockTestYamlScript(yamlScript: string): Promise<string> {
-		try {
-			const prompt = `
-				You are a YAML DSL interpreter that executes YAML scripts written in a domain-specific workflow language.  
-				Each YAML file defines a workflow using **human-friendly, domain-specific keywords** (e.g., 'Search', 'Exercise', 'Campaign') rather than rigid config fields.  
-
-				Your task:  
-				- Read the YAML workflow.  
-				- Interpret each step in order.  
-				- Generate the deliverables described (code, text, files, or structured data).  
-
-				Execution rules:  
-				1. Identify each step by its 'Step' name.  
-				2. Read the **domain-specific keywords** inside the step (e.g., 'Search', 'Exercise', 'Routine', 'Summarize').  
-				- Treat these as the **action definitions**.  
-				3. Use the keyword's parameters ('Query', 'Sources', 'Duration', 'Audience', etc.) as the **context for generation**.  
-				4. If present, honor workflow modifiers:
-				- 'Produce' → define the outputs to generate.  
-				- 'After' → run only after the referenced step succeeds.  
-				- 'If fails' → handle errors by applying the fallback instruction.  
-				5. Validate that each step produced the expected deliverable before continuing.  
-				6. Continue until the workflow completes.  
-
-				Important:  
-				- The DSL may differ between domains. Always respect the keywords as written.  
-				- Interpret the script in a **machine-readable but human-friendly** way, like a mini programming language.  
-				- Output only the requested deliverables — no explanations.
-
-				YAML Script:
-				${yamlScript}
-			`;
-			const request: OpenRouterRequest = {
-				model: 'deepseek/deepseek-chat-v3-0324:free',
-				models: ['shisa-ai/shisa-v2-llama3.3-70b:free', 'qwen/qwen3-32b:free'],
-				messages: [{ role: 'user', content: prompt }],
-			};
-
-			const response = await this.callAPI('chat/completions', request);
-			const content = response.choices[0].message?.content || '';
-			console.log(content);
-			return content;
-		} catch (error) {
-			console.log(error);
-			return '';
-		}
-	}
 }
 
-const openRouterService = new OpenRouterService();
-export default openRouterService;
+const yamlWorkflowBuilder = new YamlWorkflowBuilder();
+export default yamlWorkflowBuilder;
