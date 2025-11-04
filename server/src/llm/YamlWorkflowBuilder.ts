@@ -28,15 +28,15 @@ export class YamlWorkflowBuilder {
 
 			Return **ONLY THE IMPROVED PROMPT** in the same format as the user's input. 
 			DO NOT RETURN **Explanations or meta-commentary**.
+
+			User's prompt:
+			${userPrompt}
 		`;
 
 		const request: OpenRouterRequest = {
 			model: 'deepseek/deepseek-chat-v3-0324:free',
 			models: ['shisa-ai/shisa-v2-llama3.3-70b:free', 'qwen/qwen3-32b:free'],
-			messages: [
-				{ role: 'system', content: metaPrompt },
-				{ role: 'user', content: userPrompt },
-			],
+			messages: [{ role: 'user', content: metaPrompt }],
 		};
 
 		const response = await openRouterClient.callAPI('chat/completions', request);
@@ -46,40 +46,44 @@ export class YamlWorkflowBuilder {
 	async createYamlScript(prompt: string): Promise<string> {
 		try {
 			const metaPrompt = `
-				You are an AI assistant that designs **domain-specific workflow languages (DSLs) in YAML form**.
-				The user will provide:
-				- A short description of their goal (plain text) with the target domain.
+				You are an AI system that converts natural-language prompts into executable pseudo-code written in **YAML**.  
+				This YAML represents a human-friendly scripting language that can orchestrate AI coding assistants.
 
-				Your task:
-				1. Interpret the description and generate a **DSL-style YAML script** for that domain.
-				2. The script must not look like a rigid config file — it should feel like a **mini-language**.
-				3. Conventions:
-				- Output ONLY a YAML code block.
-				- Top-level: 'version', 'domain', 'workflow' and 'title' with '<Domain> Workflow' or '<Domain> Plan' values.
-				- Each step begins with '- Step: <name>'. <name> should be action words (e.g. 'Search', 'Summarize')
-				- For the body of each step:
-					- Prefer **domain-specific keywords** instead of generic ones.
-					*Examples:*
-						- Research domain may use: 'Search', 'Summarize', 'Themes', 'Report'.
-						- Fitness domain may use: 'Exercise', 'Routine', 'Stretch', 'Nutrition'.
-						- Marketing domain may use: 'Audience', 'Campaign', 'Message', 'Channel'.
-					- Keep parameters structured as key-value pairs under those keywords.
-				- Use 'Produce' to declare outputs.
-				- Use 'After' for dependencies.
-				- Use 'If fails' for error handling.
-				4. Keywords should vary by domain — **do not always use the same schema**.
-				5. The result should be both **machine-readable** and **human-friendly**, 
-				like GitHub Actions or IBM's Prompt Declaration Language.
+				Follow a three-phase reasoning process internally:
 
-				Return only a YAML pseudo-code block.
+				### Phase 1 — Convert
+				Convert the user's natural-language goal into a YAML script written in pseudo-code style.  
+				The YAML should clearly express:
+					- The domain or context (e.g., web, mobile, data, design)
+					- The high-level objective
+					- Sequential or parallel actions using natural verbs (e.g., "Design", "Build", "Generate", "Analyze")
+					- Structured parameters for each action
+					- Optional modifiers like "After", "If fails", or "Produce"
+				Keep it readable and human-friendly — closer to English than JSON.
 
-				User's description:
+				### Phase 2 — Evaluate
+				Analyze the YAML you created. Identify:
+					- Missing details or ambiguous instructions
+					- Possible enhancements or extra steps that would make it more useful or complete
+					- Opportunities to make the pseudo-code more expressive or precise
+
+				### Phase 3 — Revise
+				Integrate all improvements and extensions into the final YAML script.
+				Make sure the result:
+					- Remains valid YAML
+					- Feels natural and domain-appropriate
+					- Captures all relevant context from the original prompt
+					- Is ready for downstream AI execution
+
+				Return ONLY the **final, revised YAML code block**, with no explanations, analysis, or commentary.
+
+				User's prompt:
 				${prompt}
 			`;
 
 			const request: OpenRouterRequest = {
-				model: 'deepseek/deepseek-chat-v3-0324:free',
-				models: ['shisa-ai/shisa-v2-llama3.3-70b:free', 'qwen/qwen3-32b:free'],
+				model: 'deepseek/deepseek-chat-v3.1:free',
+				models: ['qwen/qwen3-coder:free', 'deepseek/deepseek-r1-0528-qwen3-8b:free'],
 				messages: [{ role: 'user', content: metaPrompt }],
 			};
 
@@ -97,39 +101,49 @@ export class YamlWorkflowBuilder {
 	async refineYamlScript(yamlScript: string, userPrompt: string): Promise<string> {
 		try {
 			const metaPrompt = `
-				You are an AI assistant that refines workflow scripts written in YAML.  
-				These scripts are **domain-specific DSLs** that orchestrate AI-driven workflows.  
-				The DSL uses **human-friendly, domain-specific keywords** (e.g., 'Search', 'Summarize', 'Exercise', 'Campaign') instead of rigid config fields.
+				You are an expert YAML workflow engineer and meta-prompting specialist.  
+				You refine and evolve **pseudo-code YAML scripts** that describe AI-driven workflows or code-generation plans.
 
-				You will be given:
-				- The current YAML script.
-				- A refinement instruction (what to improve).
+				The input YAML uses a flexible, human-friendly syntax — 
+				it may mix English-like descriptions with structured steps or parameters.
 
-				Your tasks:
-				1. Analyze the YAML for vague, missing, or inconsistent elements.  
-				2. Apply the user's refinement instruction while preserving the DSL style.  
-				3. Ensure the YAML is valid, scriptable, and follows these rules:
-				- Top-level: 'version', 'domain', 'workflow' and 'title' with '<Domain> Workflow' or '<Domain> Plan' values.  
-				- Each workflow step inside 'workflow' must include:
-					- 'Step': human-friendly step name.
-					- One or more **domain-specific keywords** (e.g., 'Search', 'Routine', 'Report') with their parameters.  
-					- 'Produce': outputs of the step (if any).  
-					- Optional modifiers:  
-					- 'After' → defines dependencies.  
-					- 'If fails' → error handling.  
-				4. If needed, add parameters or intermediate steps to make the workflow precise and executable.  
-				5. Output ONLY a YAML pseudo-code block, no explanations.
+				Your goal is to iteratively **evaluate and enhance** this YAML in response to the user's refinement instruction.
 
-				Current YAML Script (between <<< >>>):
+				Follow a structured reasoning process internally:
+
+				### Phase 1 — Understand
+				Read the current YAML and the user's refinement request.  
+				Grasp the intent, domain, and purpose of the workflow.
+
+				### Phase 2 — Evaluate
+				Analyze the YAML for:
+					- Missing or underdefined parts
+					- Opportunities to make the pseudo-code clearer, more complete, or more expressive
+					- Consistency and flow between steps
+					- Domain-specific vocabulary improvements
+					- Structural or logical improvements based on the user's feedback
+
+				### Phase 3 — Extend and Revise
+				Apply all improvements, extensions, and refinements directly to the YAML script.  
+				You may:
+					- Add new steps or parameters
+					- Reword vague actions into precise ones
+					- Introduce new domain keywords naturally
+					- Clarify dependencies or outputs
+				Keep the style readable, natural, and semantically rich.
+
+				Return ONLY the **final revised YAML code block**, with no commentary or explanations.
+
+				Current YAML Script:
 				<<<${yamlScript}>>>
+
+				User's refinement instruction:
+				${userPrompt}
 			`;
 			const request: OpenRouterRequest = {
 				model: 'deepseek/deepseek-chat-v3-0324:free',
 				models: ['shisa-ai/shisa-v2-llama3.3-70b:free', 'qwen/qwen3-32b:free'],
-				messages: [
-					{ role: 'system', content: metaPrompt },
-					{ role: 'user', content: userPrompt },
-				],
+				messages: [{ role: 'user', content: metaPrompt }],
 			};
 
 			const response = await openRouterClient.callAPI('chat/completions', request);
