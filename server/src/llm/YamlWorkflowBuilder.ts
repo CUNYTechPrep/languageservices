@@ -1,5 +1,5 @@
 import openRouterClient, { OpenRouterRequest } from './OpenRouterClient';
-import { parseYamlFromCodeBlockRegex } from './utils';
+import { parseYamlFromCodeBlockRegex, parseJsonFromCodeBlockRegex } from './utils';
 
 export class YamlWorkflowBuilder {
 	async refinePrompt(userPrompt: string): Promise<string> {
@@ -43,7 +43,7 @@ export class YamlWorkflowBuilder {
 		return response.choices[0].message?.content || '';
 	}
 
-	async createYamlScript(prompt: string): Promise<string> {
+	async createYamlScript(prompt: string): Promise<{ yaml: string; schema: any }> {
 		try {
 			const metaPrompt = `
 				You are an AI system that converts natural-language prompts into executable pseudo-code written in **YAML**.  
@@ -74,8 +74,24 @@ export class YamlWorkflowBuilder {
 					- Feels natural and domain-appropriate
 					- Captures all relevant context from the original prompt
 					- Is ready for downstream AI execution
+				
+				### Phase 4 - Generate Schema
+				Design a comprehensive JSON Schema (using JSON Schema draft 2020-12) that fully describes the structure 
+				and content of the YAML document you created.
+				Follow these instructions for the schema:
+				- Include top-level properties, the steps array, and any domain-specific keywords used.
+				- For each property, including nested objects and array item objects (e.g., each \`step\`), include:
+				  - \`type\`
+				  - \`description\` explaining the purpose and expected values
+				  - \`examples\` when appropriate
+				  - \`required\` where applicable
+				  - \`properties\` for nested objects (recursively described)
+				  - any \`enum\` or \`format\` constraints where relevant
 
-				Return ONLY the **final, revised YAML code block**, with no explanations, analysis, or commentary.
+				Return ONLY a single JSON object with the shape { "yaml": "...", "schema": { ... } } inside a \`\`\`json\`\`\` code block.
+				- The \`yaml\` field must contain the final revised YAML script as a string (no surrounding code fences).
+				- The \`schema\` field must be a valid JSON Schema object that fully describes the YAML document (top-level properties, steps array, and any domain keywords).
+				Do NOT return any additional commentary or text.
 
 				User's prompt:
 				${prompt}
@@ -89,16 +105,36 @@ export class YamlWorkflowBuilder {
 
 			const response = await openRouterClient.callAPI('chat/completions', request);
 			const content = response.choices[0].message?.content || '';
-			const yaml = parseYamlFromCodeBlockRegex(content);
-			console.log(yaml);
-			return yaml;
+
+			// Extract the JSON object from the response
+			const jsonText = parseJsonFromCodeBlockRegex(content);
+			let parsed: any = {};
+			try {
+				parsed = JSON.parse(jsonText);
+			} catch (err) {
+				console.log('Failed to parse JSON from model response:', err);
+				// Fallback: attempt to extract YAML only
+				const yamlOnly = parseYamlFromCodeBlockRegex(content);
+				return { yaml: yamlOnly, schema: {} };
+			}
+
+			const yaml = typeof parsed.yaml === 'string' ? parsed.yaml : '';
+			const schema = parsed.schema || {};
+
+			console.log('Created YAML:', yaml);
+			console.log('Created Schema:', schema);
+
+			return { yaml, schema };
 		} catch (error) {
 			console.log(error);
-			return '';
+			return { yaml: '', schema: {} };
 		}
 	}
 
-	async refineYamlScript(yamlScript: string, userPrompt: string): Promise<string> {
+	async refineYamlScript(
+		yamlScript: string,
+		userPrompt: string
+	): Promise<{ yaml: string; schema: any }> {
 		try {
 			const metaPrompt = `
 				You are an expert YAML workflow engineer and meta-prompting specialist.  
@@ -132,7 +168,23 @@ export class YamlWorkflowBuilder {
 					- Clarify dependencies or outputs
 				Keep the style readable, natural, and semantically rich.
 
-				Return ONLY the **final revised YAML code block**, with no commentary or explanations.
+				### Phase 4 - Generate Schema
+				Design a comprehensive JSON Schema (using JSON Schema draft 2020-12) that fully describes the structure 
+				and content of the YAML document you created.
+				Follow these instructions for the schema:
+				- Include top-level properties, the steps array, and any domain-specific keywords used.
+				- For each property, including nested objects and array item objects (e.g., each \`step\`), include:
+				  - \`type\`
+				  - \`description\` explaining the purpose and expected values
+				  - \`examples\` when appropriate
+				  - \`required\` where applicable
+				  - \`properties\` for nested objects (recursively described)
+				  - any \`enum\` or \`format\` constraints where relevant
+
+				Return ONLY a single JSON object with the shape { "yaml": "...", "schema": { ... } } inside a \`\`\`json\`\`\` code block.
+				- The \`yaml\` field must contain the final revised YAML script as a string (no surrounding code fences).
+				- The \`schema\` field must be a valid JSON Schema object that fully describes the YAML document (top-level properties, steps array, and any domain keywords).
+				Do NOT return any additional commentary or text.
 
 				Current YAML Script:
 				<<<${yamlScript}>>>
@@ -148,13 +200,28 @@ export class YamlWorkflowBuilder {
 
 			const response = await openRouterClient.callAPI('chat/completions', request);
 			const content = response.choices[0].message?.content || '';
-			console.log(content);
-			const yaml = parseYamlFromCodeBlockRegex(content);
-			console.log(yaml);
-			return yaml;
+			console.log('Raw refine response:', content);
+
+			const jsonText = parseJsonFromCodeBlockRegex(content);
+			let parsed: any = {};
+			try {
+				parsed = JSON.parse(jsonText);
+			} catch (err) {
+				console.log('Failed to parse JSON from refine response:', err);
+				const yamlOnly = parseYamlFromCodeBlockRegex(content);
+				return { yaml: yamlOnly, schema: {} };
+			}
+
+			const yaml = typeof parsed.yaml === 'string' ? parsed.yaml : '';
+			const schema = parsed.schema || {};
+
+			console.log('Refined YAML:', yaml);
+			console.log('Refined Schema:', schema);
+
+			return { yaml, schema };
 		} catch (error) {
 			console.log(error);
-			return '';
+			return { yaml: '', schema: {} };
 		}
 	}
 }

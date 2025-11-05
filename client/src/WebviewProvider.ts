@@ -1,10 +1,13 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 
 interface DiffData {
 	original: string;
 	modified: string;
 	targetFile: vscode.Uri;
 	fileName: string;
+	schema?: any;
 }
 
 export class DiffWebviewProvider {
@@ -103,6 +106,32 @@ export class DiffWebviewProvider {
 
 			// Save the document
 			await document.save();
+
+			// If a schema was provided, persist it to workspace .vscode/workflow.schema.json
+			try {
+				if (this._diffData?.schema) {
+					const workspaceFolders = vscode.workspace.workspaceFolders;
+					if (workspaceFolders && workspaceFolders.length > 0) {
+						const folderPath = workspaceFolders[0].uri.fsPath;
+						const vscodeDir = path.join(folderPath, '.vscode');
+						if (!fs.existsSync(vscodeDir)) {
+							fs.mkdirSync(vscodeDir, { recursive: true });
+						}
+						const schemaPath = path.join(vscodeDir, 'workflow.schema.json');
+						fs.writeFileSync(
+							schemaPath,
+							JSON.stringify(this._diffData.schema, null, 2),
+							'utf8'
+						);
+						vscode.window.showInformationMessage(
+							'Saved schema to .vscode/workflow.schema.json'
+						);
+					}
+				}
+			} catch (err) {
+				console.error('Failed to write schema file:', err);
+				vscode.window.showErrorMessage('Failed to save schema: ' + String(err));
+			}
 
 			// Close the diff panel
 			this._panel.dispose();

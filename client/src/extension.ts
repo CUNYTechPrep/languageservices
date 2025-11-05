@@ -172,6 +172,7 @@ export function activate(context: ExtensionContext) {
 						const response = await client.sendRequest<{
 							success: boolean;
 							yamlScript?: string;
+							schema?: any;
 							error?: string;
 						}>('prompt.getScript', {
 							uri: editor.document.uri.toString(),
@@ -189,7 +190,15 @@ export function activate(context: ExtensionContext) {
 							modified: commentText || originalText,
 							targetFile: editor.document.uri,
 							fileName: editor.document.fileName,
+							schema: response.schema,
 						});
+
+						if (response.schema) {
+							vscode.window.showInformationMessage(
+								'Schema returned and saved to workspace as workflow.schema.json'
+							);
+							console.log('Returned schema:', response.schema);
+						}
 					} catch (error) {
 						vscode.window.showErrorMessage(
 							'Error getting LLM feedback: ' + error.message
@@ -232,6 +241,7 @@ export function activate(context: ExtensionContext) {
 						const response = await client.sendRequest<{
 							success: boolean;
 							yamlScript?: string;
+							schema?: any;
 							error?: string;
 						}>('script.refine', {
 							uri: editor.document.uri.toString(),
@@ -250,7 +260,14 @@ export function activate(context: ExtensionContext) {
 							modified: commentText || originalText,
 							targetFile: editor.document.uri,
 							fileName: editor.document.fileName,
+							schema: response.schema,
 						});
+
+						if (response.schema) {
+							vscode.window.showInformationMessage(
+								'Refined schema returned and saved to workspace as workflow.schema.json'
+							);
+						}
 					} catch (error) {
 						vscode.window.showErrorMessage(
 							'Error refining YAML Script: ' + error.message

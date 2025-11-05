@@ -494,13 +494,32 @@ connection.onRequest('prompt.getScript', async (params: { uri: string }) => {
 			return { success: false, error: 'Document is empty' };
 		}
 
-		const yamlScript = await yamlWorkflowBuilder.createYamlScript(text);
-		if (!yamlScript || yamlScript.trim() === '') {
+		const result = await yamlWorkflowBuilder.createYamlScript(text);
+		if (!result || !result.yaml || result.yaml.trim() === '') {
 			connection.console.error('Error creating yaml script');
 			return { success: false, error: 'Error creating yaml script' };
 		}
-		connection.console.log('Yaml Script: ' + yamlScript);
-		return { success: true, yamlScript };
+
+		// Log and return YAML and schema
+		connection.console.log('Yaml Script: ' + result.yaml);
+
+		// Persist schema to workspace .vscode folder for later access
+		try {
+			const workspaceFolders = await connection.workspace.getWorkspaceFolders();
+			if (workspaceFolders && workspaceFolders.length > 0) {
+				const folderUri = workspaceFolders[0].uri;
+				const folderPath = url.fileURLToPath(folderUri);
+				const vscodeDir = path.join(folderPath, '.vscode');
+				fs.mkdirSync(vscodeDir, { recursive: true });
+				const schemaPath = path.join(vscodeDir, 'workflow.schema.json');
+				fs.writeFileSync(schemaPath, JSON.stringify(result.schema || {}, null, 2), 'utf8');
+				connection.console.log('Saved schema to: ' + schemaPath);
+			}
+		} catch (err) {
+			connection.console.error('Failed to persist schema: ' + err);
+		}
+
+		return { success: true, yamlScript: result.yaml, schema: result.schema };
 	} catch (error) {
 		connection.console.error('Error creating yaml script: ' + error);
 		return { success: false, error: 'Error creating yaml script' };
@@ -518,13 +537,31 @@ connection.onRequest('script.refine', async (params: { uri: string; prompt: stri
 			return { success: false, error: 'Document is empty' };
 		}
 
-		const yamlScript = await yamlWorkflowBuilder.refineYamlScript(text, params.prompt);
-		if (!yamlScript || yamlScript.trim() === '') {
+		const result = await yamlWorkflowBuilder.refineYamlScript(text, params.prompt);
+		if (!result || !result.yaml || result.yaml.trim() === '') {
 			connection.console.error('Error refining yaml script');
 			return { success: false, error: 'Error refining yaml script' };
 		}
-		connection.console.log('Yaml Script: ' + yamlScript);
-		return { success: true, yamlScript };
+
+		connection.console.log('Yaml Script: ' + result.yaml);
+
+		// Persist schema to workspace .vscode folder for later access
+		try {
+			const workspaceFolders = await connection.workspace.getWorkspaceFolders();
+			if (workspaceFolders && workspaceFolders.length > 0) {
+				const folderUri = workspaceFolders[0].uri;
+				const folderPath = url.fileURLToPath(folderUri);
+				const vscodeDir = path.join(folderPath, '.vscode');
+				fs.mkdirSync(vscodeDir, { recursive: true });
+				const schemaPath = path.join(vscodeDir, 'workflow.schema.json');
+				fs.writeFileSync(schemaPath, JSON.stringify(result.schema || {}, null, 2), 'utf8');
+				connection.console.log('Saved schema to: ' + schemaPath);
+			}
+		} catch (err) {
+			connection.console.error('Failed to persist schema: ' + err);
+		}
+
+		return { success: true, yamlScript: result.yaml, schema: result.schema };
 	} catch (error) {
 		connection.console.error('Error refining yaml script: ' + error);
 		return { success: false, error: 'Error refining yaml script' };
