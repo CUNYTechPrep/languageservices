@@ -579,13 +579,15 @@ connection.onRequest('script.test', async (params: { uri: string }) => {
 			return { success: false, error: 'Document is empty' };
 		}
 
-		const testResult = await yamlExecutor.mockTestYamlScript(text);
-		if (!testResult || testResult.trim() === '') {
-			connection.console.error('Error testing yaml script');
+		const testResults = await yamlExecutor.testYamlWithPromptChaining(text);
+
+		if (!testResults || Object.keys(testResults).length === 0) {
+			connection.console.error('Error testing yaml script: empty result');
 			return { success: false, error: 'Error testing yaml script' };
 		}
-		connection.console.log('Yaml Script result: ' + testResult);
-		return { success: true, testResult };
+
+		// Return the raw object, not a markdown string
+		return { success: true, testResults };
 	} catch (error) {
 		connection.console.error('Error testing yaml script: ' + error);
 		return { success: false, error: 'Error testing yaml script' };
