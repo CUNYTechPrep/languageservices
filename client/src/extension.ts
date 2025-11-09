@@ -15,6 +15,7 @@ import {
 } from 'vscode-languageclient/node';
 
 import { DiffWebviewProvider } from './WebviewProvider';
+import { TestResultsWebviewProvider } from './TestResultsWebviewProvider';
 
 let client: LanguageClient;
 
@@ -172,6 +173,7 @@ export function activate(context: ExtensionContext) {
 						const response = await client.sendRequest<{
 							success: boolean;
 							yamlScript?: string;
+							schema?: any;
 							error?: string;
 						}>('prompt.getScript', {
 							uri: editor.document.uri.toString(),
@@ -189,7 +191,15 @@ export function activate(context: ExtensionContext) {
 							modified: commentText || originalText,
 							targetFile: editor.document.uri,
 							fileName: editor.document.fileName,
+							schema: response.schema,
 						});
+
+						if (response.schema) {
+							vscode.window.showInformationMessage(
+								'Schema returned and saved to workspace as workflow.schema.json'
+							);
+							console.log('Returned schema:', response.schema);
+						}
 					} catch (error) {
 						vscode.window.showErrorMessage(
 							'Error getting LLM feedback: ' + error.message
@@ -232,6 +242,7 @@ export function activate(context: ExtensionContext) {
 						const response = await client.sendRequest<{
 							success: boolean;
 							yamlScript?: string;
+							schema?: any;
 							error?: string;
 						}>('script.refine', {
 							uri: editor.document.uri.toString(),
@@ -250,7 +261,14 @@ export function activate(context: ExtensionContext) {
 							modified: commentText || originalText,
 							targetFile: editor.document.uri,
 							fileName: editor.document.fileName,
+							schema: response.schema,
 						});
+
+						if (response.schema) {
+							vscode.window.showInformationMessage(
+								'Refined schema returned and saved to workspace as workflow.schema.json'
+							);
+						}
 					} catch (error) {
 						vscode.window.showErrorMessage(
 							'Error refining YAML Script: ' + error.message
@@ -281,7 +299,7 @@ export function activate(context: ExtensionContext) {
 					try {
 						const response = await client.sendRequest<{
 							success: boolean;
-							testResult?: string;
+							testResults?: Record<string, string>;
 							error?: string;
 						}>('script.test', {
 							uri: editor.document.uri.toString(),
@@ -292,19 +310,25 @@ export function activate(context: ExtensionContext) {
 							return;
 						}
 
-						// Create virtual markdown document
-						const document = await vscode.workspace.openTextDocument({
-							content: response.testResult,
-							language: 'markdown',
-						});
+						// Convert testResults to the format expected by the webview
+						const steps = Object.entries(response.testResults || {}).map(
+							([name, output]) => ({
+								name,
+								output,
+							})
+						);
 
-						// Show in editor first
-						await vscode.window.showTextDocument(document, vscode.ViewColumn.Active);
+						const testResultsData = {
+							workflowName: path.basename(editor.document.fileName, '.yaml'),
+							timestamp: new Date().toLocaleString(),
+							steps,
+							totalSteps: steps.length,
+						};
 
-						// Then immediately open markdown preview
-						await vscode.commands.executeCommand(
-							'markdown.showPreviewToSide',
-							document.uri
+						// Show results in the new webview panel
+						TestResultsWebviewProvider.createOrShow(
+							context.extensionUri,
+							testResultsData
 						);
 					} catch (error) {
 						vscode.window.showErrorMessage(
