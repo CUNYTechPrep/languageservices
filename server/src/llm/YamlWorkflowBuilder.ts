@@ -34,8 +34,8 @@ export class YamlWorkflowBuilder {
 		`;
 
 		const request: OpenRouterRequest = {
-			model: 'deepseek/deepseek-chat-v3-0324:free',
-			models: ['shisa-ai/shisa-v2-llama3.3-70b:free', 'qwen/qwen3-32b:free'],
+			model: 'deepseek/deepseek-chat-v3.1:free',
+			models: ['qwen/qwen3-coder:free', 'deepseek/deepseek-r1-0528-qwen3-8b:free'],
 			messages: [{ role: 'user', content: metaPrompt }],
 		};
 
