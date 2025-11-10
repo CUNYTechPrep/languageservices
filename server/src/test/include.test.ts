@@ -2,11 +2,16 @@ import * as assert from 'assert';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { isIncludeDirective, validateStaticContent, loadAndValidateIncludedContent, processIncludes } from '../include';
+import {
+	isIncludeDirective,
+	validateStaticContent,
+	loadAndValidateIncludedContent,
+	processIncludes,
+} from '../include';
 
 suite('Include Module Tests', () => {
 	let tempDir: string;
-	
+
 	setup(() => {
 		// Create a temporary directory for test files
 		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsp-test-'));
@@ -185,7 +190,7 @@ suite('Include Module Tests', () => {
 
 			const obj = {
 				config: { include: 'nested.yaml' },
-				other: 'value'
+				other: 'value',
 			};
 			const result = processIncludes(obj, `file://${tempDir}`) as Record<string, unknown>;
 			assert.deepStrictEqual(result.config, { nested: true });
@@ -196,11 +201,7 @@ suite('Include Module Tests', () => {
 			const yamlFile = path.join(tempDir, 'item.yaml');
 			fs.writeFileSync(yamlFile, 'type: included', 'utf8');
 
-			const arr = [
-				'plain',
-				{ include: 'item.yaml' },
-				'another'
-			];
+			const arr = ['plain', { include: 'item.yaml' }, 'another'];
 			const result = processIncludes(arr, `file://${tempDir}`) as unknown[];
 			assert.strictEqual(result[0], 'plain');
 			assert.deepStrictEqual(result[1], { type: 'included' });

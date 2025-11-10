@@ -41,6 +41,24 @@
           ],
           "default": "off",
           "description": "Traces the communication between VS Code and the language server."
+        },
+        "languageServerExample.llm.primaryModel": {
+          "scope": "resource",
+          "type": "string",
+          "default": "deepseek/deepseek-chat-v3.1:free",
+          "description": "Primary LLM model for LSP operations."
+        },
+        "languageServerExample.llm.fallbackModels": {
+          "scope": "resource",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "qwen/qwen3-coder:free",
+            "deepseek/deepseek-r1-0528-qwen3-8b:free"
+          ],
+          "description": "Fallback models for LSP operations."
         }
       }
     },

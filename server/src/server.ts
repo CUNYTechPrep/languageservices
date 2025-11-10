@@ -344,6 +344,22 @@ connection.onInitialized(async () => {
 // The example settings
 interface ExampleSettings {
 	maxNumberOfProblems: number;
+	llm?: {
+		yamlExecutor?: {
+			primaryModel?: string;
+			fallbackModels?: string[];
+		};
+		workflowStep?: {
+			primaryModel?: string;
+			fallbackModels?: string[];
+		};
+		yamlBuilder?: {
+			primaryModel?: string;
+			fallbackModels?: string[];
+		};
+		temperature?: number;
+		maxTokens?: number;
+	};
 }
 
 // The global settings, used when the `workspace/configuration` request is not supported by the client.
@@ -387,6 +403,10 @@ function getDocumentSettings(resource: string): Thenable<ExampleSettings> {
 documents.onDidClose(e => {
 	documentSettings.delete(e.document.uri);
 });
+
+// NOTE: LLM configuration settings are defined in package.json but not yet implemented
+// in the runtime. Currently, models are configured via constants.ts.
+// Future enhancement: Pass settings to YamlExecutor and YamlWorkflowBuilder dynamically.
 
 connection.languages.diagnostics.on(async params => {
 	const document = documents.get(params.textDocument.uri);
