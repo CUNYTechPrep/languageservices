@@ -1,6 +1,12 @@
 import openRouterClient, { OpenRouterRequest } from './llm/OpenRouterClient';
 import { parse } from 'yaml';
 import { LLMError, YAMLProcessingError, getErrorMessage } from './errorHandler';
+import {
+	YamlWorkflowDocument,
+	WorkflowExecutionResult,
+	WorkflowStep,
+	isWorkflowStep,
+} from './types';
 
 // Configuration constants
 const RETRY_CONFIG = {
@@ -120,18 +126,24 @@ export class YamlExecutor {
 		}
 
 		try {
-			const doc = parse(yamlScript) as { steps?: unknown[] };
+			const doc = parse(yamlScript) as YamlWorkflowDocument;
 
 			if (!doc || !doc.steps || !Array.isArray(doc.steps)) {
 				throw new YAMLProcessingError('YAML must include a top-level `steps` array');
 			}
 
-			const outputs: Record<string, string> = {};
+			const outputs: WorkflowExecutionResult = {};
 
 			// Accumulate a simple context object to pass previous outputs
 			for (let i = 0; i < doc.steps.length; i++) {
-				const step = doc.steps[i] as Record<string, unknown>;
-				const stepName = (step.Step as string) || (step.name as string) || `step-${i + 1}`;
+				const stepData: WorkflowStep = doc.steps[i];
+
+				// Validate step structure
+				if (!isWorkflowStep(stepData)) {
+					throw new YAMLProcessingError(`Invalid step structure at index ${i}`);
+				}
+
+				const stepName = stepData.Step || stepData.name || `step-${i + 1}`;
 
 				// Info logging for workflow execution progress
 				console.info(`Executing step: ${stepName}`);
@@ -146,7 +158,7 @@ export class YamlExecutor {
 				const prompt = `
                     You are executing a single step from a YAML workflow. Execute the step below and produce only the requested deliverable (no explanations).
                     Step (${stepName}):
-                    ${JSON.stringify(step, null, 2)}
+                    ${JSON.stringify(stepData, null, 2)}
                     Context - outputs from previous steps:
                     ${JSON.stringify(outputs, null, 2)}
                     Follow the step's intent and produce the deliverable described.

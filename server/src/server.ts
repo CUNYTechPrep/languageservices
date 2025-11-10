@@ -28,6 +28,7 @@ import * as path from 'path';
 
 import { resolveExpression, replacePlaceholders } from './expressions';
 import { processIncludes } from './include';
+import { YamlWorkflowDocument, isYamlWorkflowDocument } from './types';
 
 import yamlWorkflowBuilder from './llm/YamlWorkflowBuilder';
 import yamlExecutor from './YamlExecutor';
@@ -46,16 +47,23 @@ let hasDiagnosticRelatedInformationCapability = false;
 let loadedVariables: Record<string, unknown> = {};
 
 // helper functions for data-structure parsing
-function parseYamlContent(content: string, docUri: string) {
+function parseYamlContent(content: string, docUri: string): YamlWorkflowDocument | null {
 	try {
 		const yamlData = parse(content);
 		const replacedData = replacePlaceholders(yamlData, loadedVariables);
 
 		const parsedContent = processIncludes(replacedData, path.dirname(docUri));
 
+		// Validate that the parsed content matches expected structure
+		if (!isYamlWorkflowDocument(parsedContent)) {
+			connection.console.error('Parsed YAML does not match expected workflow structure');
+			return null;
+		}
+
 		return parsedContent;
 	} catch (error) {
-		connection.console.error('Error parsing YAML: ' + error);
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		connection.console.error(`Error parsing YAML: ${errorMessage}`);
 		return null;
 	}
 }
