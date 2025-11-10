@@ -1,40 +1,59 @@
 import openRouterClient, { OpenRouterRequest } from './llm/OpenRouterClient';
 import { parse } from 'yaml';
+import { LLMError, YAMLProcessingError, getErrorMessage } from './errorHandler';
+
+// Configuration constants
+const RETRY_CONFIG = {
+	MAX_RETRIES: 3,
+	BASE_DELAY_MS: 1000,
+	STEP_DELAY_MS: 2000,
+};
 
 // Utility function to sleep/wait
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Exponential backoff retry wrapper
-async function callWithRetry(
-	fn: () => Promise<any>,
-	maxRetries = 3,
-	baseDelay = 1000
-): Promise<any> {
+async function callWithRetry<T>(
+	fn: () => Promise<T>,
+	maxRetries = RETRY_CONFIG.MAX_RETRIES,
+	baseDelay = RETRY_CONFIG.BASE_DELAY_MS
+): Promise<T> {
 	for (let attempt = 0; attempt <= maxRetries; attempt++) {
 		try {
 			return await fn();
-		} catch (error: any) {
+		} catch (error: unknown) {
+			// Check if this is a rate limit error using LLMError methods
 			const isRateLimitError =
-				error?.message?.includes('too quickly') ||
-				error?.message?.includes('rate limit') ||
-				error?.message?.includes('429');
+				error instanceof LLMError
+					? error.isRateLimitError()
+					: (error as Error)?.message?.includes('too quickly') ||
+						(error as Error)?.message?.includes('rate limit') ||
+						(error as Error)?.message?.includes('429');
 
+			// If it's not a rate limit error or we're out of retries, throw
 			if (!isRateLimitError || attempt === maxRetries) {
 				throw error;
 			}
 
 			// Exponential backoff: 1s, 2s, 4s, 8s...
 			const delay = baseDelay * Math.pow(2, attempt);
-			console.log(
+			// This is informational logging for retry logic, console is acceptable here
+			console.info(
 				`Rate limit hit. Retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})...`
 			);
 			await sleep(delay);
 		}
 	}
+	// TypeScript exhaustiveness check - should never reach here
+	throw new Error('Retry logic exhausted without throwing');
 }
 
 export class YamlExecutor {
 	async mockTestYamlScript(yamlScript: string): Promise<string> {
+		if (!yamlScript || yamlScript.trim().length === 0) {
+			throw new YAMLProcessingError('Cannot execute empty YAML script');
+		}
+
 		try {
 			const prompt = `
 				You are a YAML DSL interpreter that executes YAML scripts written in a domain-specific workflow language.  
@@ -77,37 +96,50 @@ export class YamlExecutor {
 			});
 
 			const content = response.choices[0].message?.content || '';
-			console.log(content);
+
+			if (!content || content.trim().length === 0) {
+				throw new YAMLProcessingError('LLM returned empty response for YAML execution');
+			}
+
 			return content;
 		} catch (error) {
-			console.log(error);
-			return '';
+			if (error instanceof LLMError || error instanceof YAMLProcessingError) {
+				throw error;
+			}
+			const message = getErrorMessage(error);
+			throw new YAMLProcessingError(
+				`Failed to execute YAML script: ${message}`,
+				error as Error
+			);
 		}
 	}
 
 	async testYamlWithPromptChaining(yamlScript: string): Promise<Record<string, string>> {
+		if (!yamlScript || yamlScript.trim().length === 0) {
+			throw new YAMLProcessingError('Cannot test empty YAML script');
+		}
+
 		try {
-			const doc = parse(yamlScript) as any;
+			const doc = parse(yamlScript) as { steps?: unknown[] };
 
 			if (!doc || !doc.steps || !Array.isArray(doc.steps)) {
-				throw new Error('YAML must include a top-level `steps` array');
+				throw new YAMLProcessingError('YAML must include a top-level `steps` array');
 			}
 
 			const outputs: Record<string, string> = {};
+
 			// Accumulate a simple context object to pass previous outputs
 			for (let i = 0; i < doc.steps.length; i++) {
-				const step = doc.steps[i];
-				const stepName = step?.Step || step?.name || `step-${i + 1}`;
+				const step = doc.steps[i] as Record<string, unknown>;
+				const stepName = (step.Step as string) || (step.name as string) || `step-${i + 1}`;
 
-				console.log(`Executing step: ${stepName}`);
-				console.log('Step details:', JSON.stringify(step, null, 2));
-				console.log('Current outputs:', JSON.stringify(outputs, null, 2));
+				// Info logging for workflow execution progress
+				console.info(`Executing step: ${stepName}`);
 
 				// Add delay between steps to avoid rate limiting (except for first step)
 				if (i > 0) {
-					const delayMs = 2000; // 2 second delay between steps
-					console.log(`Waiting ${delayMs}ms before next request...`);
-					await sleep(delayMs);
+					console.info(`Waiting ${RETRY_CONFIG.STEP_DELAY_MS}ms before next request...`);
+					await sleep(RETRY_CONFIG.STEP_DELAY_MS);
 				}
 
 				// Build a prompt for this step, including previous outputs as context
@@ -133,16 +165,23 @@ export class YamlExecutor {
 
 				const content = response.choices[0].message?.content || '';
 
-				// Log the output for now as requested
-				console.log(`Step output (${stepName}):`, content);
+				if (!content || content.trim().length === 0) {
+					throw new YAMLProcessingError(`Step "${stepName}" returned empty output`);
+				}
 
 				outputs[stepName] = content;
 			}
 
 			return outputs;
 		} catch (error) {
-			console.log('Error executing YAML prompt chain:', error);
-			throw error;
+			if (error instanceof LLMError || error instanceof YAMLProcessingError) {
+				throw error;
+			}
+			const message = getErrorMessage(error);
+			throw new YAMLProcessingError(
+				`Error executing YAML prompt chain: ${message}`,
+				error as Error
+			);
 		}
 	}
 }

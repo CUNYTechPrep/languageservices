@@ -5,7 +5,6 @@
 import {
 	createConnection,
 	TextDocuments,
-	NotificationType,
 	ShowMessageNotification,
 	MessageType,
 	Diagnostic,
@@ -22,9 +21,7 @@ import {
 	type DocumentDiagnosticReport,
 } from 'vscode-languageserver/node';
 
-import { logger, logErrorToFile, logResponseToFile } from './logger';
-
-import { LLMError, handleLLMError } from './errorHandler';
+import { LLMError, handleLLMError, getErrorMessage } from './errorHandler';
 
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { parse, stringify } from 'yaml';
@@ -38,28 +35,21 @@ import { processIncludes } from './include';
 
 import yamlWorkflowBuilder from './llm/YamlWorkflowBuilder';
 import yamlExecutor from './YamlExecutor';
-
-const OPENROUTER_KEY = process.env.OPENROUTER_KEY;
+import openRouterClient, { OpenRouterRequest } from './llm/OpenRouterClient';
 
 interface ActionContext {
-	[key: string]: any;
+	[key: string]: unknown;
 	prompt?: string;
-	data?: any;
+	data?: unknown;
 	correctedData?: string;
 	llmResult?: string;
 }
 
-interface LLMResponse {
-	choices: {
-		message?: {
-			role: string;
-			content: string;
-		};
-	}[];
-}
-
 // we need to map keywords -> actions, lets do the following:
-const actionHandlers = new Map<string, (data: any, context?: any) => Promise<any>>();
+const actionHandlers = new Map<
+	string,
+	(data: unknown, context?: ActionContext) => Promise<unknown>
+>();
 function registerActionHandlers() {
 	// actions associated with a function for each keywords
 	actionHandlers.set('prompt', handlePromptAction);
@@ -70,16 +60,14 @@ function registerActionHandlers() {
 // handler functions below, probably repeating code for handleCorrectionAction, but lets
 // just get functionality first
 
-async function handlePromptAction(data: any, context?: any) {
-	connection.console.log('Prompt keyword found: ' + JSON.stringify(data));
+async function handlePromptAction(data: unknown, context?: ActionContext) {
 	if (context) {
-		context.prompt = data;
+		context.prompt = data as string;
 	}
 	return { type: 'prompt', data };
 }
 
-async function handleCorrectionAction(data: any, context?: any) {
-	connection.console.log('Correct keyword found: ' + JSON.stringify(data));
+async function handleCorrectionAction(data: unknown, context?: ActionContext) {
 	if (data === true && context && context.data) {
 		const contentForLLM = `
 	  Please correct the following code or syntax:
@@ -89,40 +77,30 @@ async function handleCorrectionAction(data: any, context?: any) {
 	  `;
 
 		try {
-			const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-				method: 'POST',
-				headers: {
-					Authorization: 'Bearer ' + OPENROUTER_KEY,
-					'Content-Type': 'application/json',
-				},
-				body: JSON.stringify({
-					model: 'deepseek/deepseek-chat-v3-0324:free',
-					models: ['shisa-ai/shisa-v2-llama3.3-70b:free', 'qwen/qwen3-32b:free'],
-					messages: [
-						{
-							role: 'user',
-							content: contentForLLM,
-						},
-					],
-				}),
-			});
+			const request: OpenRouterRequest = {
+				model: 'deepseek/deepseek-chat-v3-0324:free',
+				models: ['shisa-ai/shisa-v2-llama3.3-70b:free', 'qwen/qwen3-32b:free'],
+				messages: [
+					{
+						role: 'user',
+						content: contentForLLM,
+					},
+				],
+			};
 
-			if (!response.ok) {
-				throw new Error('Failed to correct content');
-			}
-
-			const result = (await response.json()) as LLMResponse;
+			const result = await openRouterClient.callAPI('chat/completions', request);
 			context.correctedData = result.choices[0]?.message?.content;
 			return { type: 'correction', original: context.data, corrected: context.correctedData };
-		} catch (error: any) {
-			connection.console.error('Error in correction action: ' + error);
-			return { type: 'correction', error: error.message };
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Unknown error';
+			connection.console.error('Error in correction action: ' + message);
+			return { type: 'correction', error: message };
 		}
 	}
 	return { type: 'correction', skipped: true, reason: 'Correction not requested or no data' };
 }
 
-async function traverseYamlAndExecuteActions(yamlObject: any) {
+async function traverseYamlAndExecuteActions(yamlObject: Record<string, unknown>) {
 	const results = [];
 	const context: ActionContext = {};
 
@@ -144,7 +122,7 @@ async function traverseYamlAndExecuteActions(yamlObject: any) {
 		}
 
 		if (value && typeof value === 'object' && !Array.isArray(value)) {
-			connection.console.log(`Found nested object at key '${key}'`);
+			// Nested object found - could be logged at debug level if needed
 		}
 	}
 
@@ -156,8 +134,8 @@ async function traverseYamlAndExecuteActions(yamlObject: any) {
 	return { results, context };
 }
 
-async function executeDefaultLLMAction(context: any): Promise<any> {
-	const prompt = context.prompt;
+async function executeDefaultLLMAction(context: ActionContext): Promise<Record<string, unknown>> {
+	const prompt = context.prompt as string;
 	const data = context.data;
 	const correctedData = context.correctedData || data; // check for correction (optional)
 
@@ -172,40 +150,28 @@ async function executeDefaultLLMAction(context: any): Promise<any> {
 	`;
 
 	try {
-		const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-			method: 'POST',
-			headers: {
-				Authorization: 'Bearer ' + OPENROUTER_KEY,
-				'Content-Type': 'application/json',
-			},
-			body: JSON.stringify({
-				model: 'deepseek/deepseek-chat-v3-0324:free',
-				models: ['shisa-ai/shisa-v2-llama3.3-70b:free', 'qwen/qwen3-32b:free'],
-				messages: [
-					{
-						role: 'user',
-						content: contentForLLM,
-					},
-				],
-			}),
-		});
+		const request: OpenRouterRequest = {
+			model: 'deepseek/deepseek-chat-v3-0324:free',
+			models: ['shisa-ai/shisa-v2-llama3.3-70b:free', 'qwen/qwen3-32b:free'],
+			messages: [
+				{
+					role: 'user',
+					content: contentForLLM,
+				},
+			],
+		};
 
-		if (!response.ok) {
-			const error = (await response.json()) as any;
-			throw new Error(error.error?.message || 'Unknown error');
-		}
-
-		const result = (await response.json()) as LLMResponse;
+		const result = await openRouterClient.callAPI('chat/completions', request);
 		context.llmResult = result.choices[0]?.message?.content;
 		return { type: 'llm_processing', result: context.llmResult };
-	} catch (error: any) {
-		connection.console.error('Error executing LLM action: ' + error);
-		return { type: 'llm_processing', error: error.message };
+	} catch (error) {
+		const message = error instanceof Error ? error.message : 'Unknown error';
+		connection.console.error('Error executing LLM action: ' + message);
+		return { type: 'llm_processing', error: message };
 	}
 }
 
-async function handleDataAction(data: any, context?: any) {
-	connection.console.log('Data keyword found: ' + typeof data);
+async function handleDataAction(data: unknown, context?: ActionContext) {
 	if (context) {
 		context.data = data;
 	}
@@ -223,7 +189,7 @@ let hasConfigurationCapability = false;
 let hasWorkspaceFolderCapability = false;
 let hasDiagnosticRelatedInformationCapability = false;
 
-let loadedVariables: Record<string, any> = {};
+let loadedVariables: Record<string, unknown> = {};
 
 // helper functions for data-structure parsing
 function parseYamlContent(content: string, docUri: string) {
@@ -262,7 +228,7 @@ function parseYamlContent(content: string, docUri: string) {
 	}
 }
 
-function extractSchemaKeywords(schema: any) {
+function extractSchemaKeywords(schema: Record<string, unknown>) {
 	const keywords = [];
 	if (schema.properties) {
 		// TODO: await for Matthew's Schema implementation to extract the right important keywords
@@ -328,9 +294,12 @@ function notifyClientError(message: string) {
 // ENDPOINTS START HERE (onRequests)
 connection.onRequest(
 	'llm-feedback.insertComment',
-	async (params: { uri: string; range: any; text: string }) => {
+	async (params: {
+		uri: string;
+		range: { start: { line: number }; end: { line: number } };
+		text: string;
+	}) => {
 		// use func parseYamlContent() here
-		console.log(params.text);
 		const doc = documents.get(params.uri);
 		if (!doc) {
 			return { success: false, error: 'Document not found' };
@@ -351,25 +320,17 @@ connection.onRequest(
 				'Parsed YAML Content: ' + JSON.stringify(parsedContent.parsedContent, null, 2)
 			);
 
-			const llmPrompt = `
-				1.Convert the following prompts into a YAML format that uses a pseudo code that you can interpret precisely.
-				2.Evaluate the YAML and write any improvements and extensions.
-				3.Revise the original YAML to include all the improvements and extension you suggested with comments.
-				4.Extract all the keywords used in the YAML specification and list them, explaining how each is to be used.
-				Return prompt 3 and 4 only. Prompt 4 should have the keywords in json format, keywords{word:,explanation:}
-				`.trim();
-			// Not using the above, but leaving it here for future.
-			//Key words should soon be returned as well, probably in a list or tuple format. These can be used to to replace the existing ones
-			let contentForLLM;
+			// Future: Key words could be returned as well, probably in a list or tuple format. These can be used to replace the existing ones
+			let userContent: string;
 			if (parsedContent.isCorrection) {
-				contentForLLM = `
+				userContent = `
 			Please correct the following code or syntac:
 			${parsedContent.dataToCorrect}
 
 			Return ONLY the corrected code. NOTHING ELSE. 
 			`;
 			} else {
-				contentForLLM = `
+				userContent = `
 			I have the following YAML text:
 			${params.text}
 			Parsed YAML text here:
@@ -379,55 +340,28 @@ connection.onRequest(
 			Return ONLY the result as a single YAML Comment line, with no explanation, code blocks, or additional formatting.
 			`;
 			}
-			const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-				method: 'POST',
-				headers: {
-					Authorization: 'Bearer ' + OPENROUTER_KEY,
-					'Content-Type': 'application/json',
-				},
-				body: JSON.stringify({
-					model: 'deepseek/deepseek-chat-v3-0324:free', // Model
-					models: ['shisa-ai/shisa-v2-llama3.3-70b:free', 'qwen/qwen3-32b:free'], //Backup models for OpenRouter server
-					messages: [
-						{
-							role: 'user',
-							content: params.text + llmPrompt, //swapped for llmcontent here  Send prompt and data from YAML
-						},
-					],
-				}),
-			});
 
-			//hanlde error here
-			if (!response.ok) {
-				const error = (await response.json()) as {
-					error: { message: string; code: string };
-				};
-				console.log(error);
-				throw new LLMError(error.error.code, error.error.message);
-			}
+			const openRouterRequest: OpenRouterRequest = {
+				model: 'deepseek/deepseek-chat-v3-0324:free',
+				messages: [
+					{
+						role: 'user',
+						content: userContent,
+					},
+				],
+			};
 
-			interface OpenAIResponse {
-				choices: {
-					message?: {
-						role: string;
-						content: string;
-					};
-					error?: {
-						message: string;
-						code: string;
-					};
-				}[];
-			}
-			const result = (await response.json()) as OpenAIResponse;
+			const result = await openRouterClient.callAPI(
+				'llm-feedback.insertComment',
+				openRouterRequest
+			);
 			if (result.choices[0].error) {
 				const error = result.choices[0].error;
 				throw new LLMError(error.code, error.message);
 			}
-			console.log(result);
-			connection.console.log('LLM Prompt:' + contentForLLM);
-			connection.console.log('LLM Response:' + JSON.stringify(result, null, 2));
+
 			const feedback = result.choices[0]?.message?.content ?? '';
-			//logResponseToFile(params.text, result);
+
 			if (parsedContent.isCorrection && parsedContent.shouldReplace) {
 				return {
 					success: true,
@@ -596,7 +530,7 @@ connection.onRequest('script.test', async (params: { uri: string }) => {
 
 connection.onRequest(
 	'llm-schema.extractKeywords',
-	async (params: { schema: any; yamlText?: string }) => {
+	async (params: { schema: Record<string, unknown>; yamlText?: string }) => {
 		try {
 			const schemaKeywords = extractSchemaKeywords(params.schema);
 
@@ -604,9 +538,9 @@ connection.onRequest(
 				try {
 					const parsedYaml = parse(params.yamlText);
 
-					for (let i = 0; i < schemaKeywords.length; i++) {
-						if (parsedYaml.hasOwnProperty(schemaKeywords[i].key_word)) {
-							schemaKeywords[i].appearsInYaml = true;
+					for (const keyword of schemaKeywords) {
+						if (Object.prototype.hasOwnProperty.call(parsedYaml, keyword.key_word)) {
+							keyword.appearsInYaml = true;
 						}
 					}
 
@@ -677,12 +611,12 @@ connection.onRequest('yaml-actions.execute', async (params: { uri: string; yamlT
 			correctedData: context.correctedData,
 			context,
 		};
-	} catch (error: any) {
-		connection.console.error('Error executing YAML actions: ' + error);
-		return { success: false, error: 'Failed to execute YAML actions: ' + error.message };
+	} catch (error) {
+		const errorMessage = getErrorMessage(error);
+		connection.console.error('Error executing YAML actions: ' + errorMessage);
+		return { success: false, error: 'Failed to execute YAML actions: ' + errorMessage };
 	}
 });
-
 connection.onInitialized(async () => {
 	if (hasConfigurationCapability) {
 		// Register for all configuration changes.
@@ -706,7 +640,7 @@ connection.onInitialized(async () => {
 				if (varsFiles.length > 0) {
 					const firstMatchPath = path.join(folderPath, varsFiles[0]);
 					const fileContent = fs.readFileSync(firstMatchPath, 'utf8');
-					loadedVariables = parse(fileContent) as Record<string, any>;
+					loadedVariables = parse(fileContent) as Record<string, unknown>;
 				} else {
 					loadedVariables = {};
 				}
