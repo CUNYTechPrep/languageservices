@@ -73,3 +73,17 @@ export function isYamlWorkflowDocument(obj: unknown): obj is YamlWorkflowDocumen
 
 	return true;
 }
+
+/**
+ * Structured result type for YAML parsing
+ */
+export type ParseResult =
+	| {
+			success: true;
+			data: YamlWorkflowDocument;
+	  }
+	| {
+			success: false;
+			error: string;
+			phase: 'parsing' | 'variable-replacement' | 'include-processing' | 'validation';
+	  };

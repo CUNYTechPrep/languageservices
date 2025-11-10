@@ -28,7 +28,7 @@ import * as path from 'path';
 
 import { resolveExpression, replacePlaceholders } from './expressions';
 import { processIncludes } from './include';
-import { YamlWorkflowDocument, isYamlWorkflowDocument } from './types';
+import { isYamlWorkflowDocument, ParseResult } from './types';
 
 import yamlWorkflowBuilder from './llm/YamlWorkflowBuilder';
 import yamlExecutor from './YamlExecutor';
@@ -47,24 +47,69 @@ let hasDiagnosticRelatedInformationCapability = false;
 let loadedVariables: Record<string, unknown> = {};
 
 // helper functions for data-structure parsing
-function parseYamlContent(content: string, docUri: string): YamlWorkflowDocument | null {
+function parseYamlContent(content: string, docUri: string): ParseResult {
 	try {
-		const yamlData = parse(content);
-		const replacedData = replacePlaceholders(yamlData, loadedVariables);
-
-		const parsedContent = processIncludes(replacedData, path.dirname(docUri));
-
-		// Validate that the parsed content matches expected structure
-		if (!isYamlWorkflowDocument(parsedContent)) {
-			connection.console.error('Parsed YAML does not match expected workflow structure');
-			return null;
+		// Phase 1: Parse YAML
+		let yamlData: unknown;
+		try {
+			yamlData = parse(content);
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			return {
+				success: false,
+				phase: 'parsing',
+				error: `YAML syntax error: ${errorMessage}`,
+			};
 		}
 
-		return parsedContent;
+		// Phase 2: Replace variables
+		let replacedData: unknown;
+		try {
+			replacedData = replacePlaceholders(yamlData, loadedVariables);
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			return {
+				success: false,
+				phase: 'variable-replacement',
+				error: `Variable resolution error: ${errorMessage}`,
+			};
+		}
+
+		// Phase 3: Process includes
+		let parsedContent: unknown;
+		try {
+			parsedContent = processIncludes(replacedData, path.dirname(docUri));
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			return {
+				success: false,
+				phase: 'include-processing',
+				error: `Include processing error: ${errorMessage}`,
+			};
+		}
+
+		// Phase 4: Validate structure
+		if (!isYamlWorkflowDocument(parsedContent)) {
+			return {
+				success: false,
+				phase: 'validation',
+				error: 'Document structure is invalid. Expected a workflow document with optional "steps" array.',
+			};
+		}
+
+		return {
+			success: true,
+			data: parsedContent,
+		};
 	} catch (error) {
+		// Catch-all for unexpected errors
 		const errorMessage = error instanceof Error ? error.message : String(error);
-		connection.console.error(`Error parsing YAML: ${errorMessage}`);
-		return null;
+		connection.console.error(`Unexpected error parsing YAML: ${errorMessage}`);
+		return {
+			success: false,
+			phase: 'parsing',
+			error: `Unexpected error: ${errorMessage}`,
+		};
 	}
 }
 
@@ -231,7 +276,19 @@ connection.onRequest('script.test', async (params: { uri: string }) => {
 
 		const yamlParsed = parseYamlContent(text, doc.uri);
 
-		const testResults = await yamlExecutor.testYamlWithPromptChaining(stringify(yamlParsed));
+		if (!yamlParsed.success) {
+			connection.console.error(
+				`YAML parsing failed (${yamlParsed.phase}): ${yamlParsed.error}`
+			);
+			return {
+				success: false,
+				error: `Failed to parse YAML (${yamlParsed.phase}): ${yamlParsed.error}`,
+			};
+		}
+
+		const testResults = await yamlExecutor.testYamlWithPromptChaining(
+			stringify(yamlParsed.data)
+		);
 
 		if (!testResults || Object.keys(testResults).length === 0) {
 			connection.console.error('Error testing yaml script: empty result');
@@ -350,21 +407,41 @@ connection.languages.diagnostics.on(async params => {
 
 // The content of a text document has changed. This event is emitted
 // when the text document first opened or when its content has changed.
-documents.onDidChangeContent(change => {
-	validateTextDocument(change.document);
+documents.onDidChangeContent(async change => {
+	const diagnostics = await validateTextDocument(change.document);
+	// Send the diagnostics to the client
+	connection.sendDiagnostics({ uri: change.document.uri, diagnostics });
 });
 
 async function validateTextDocument(textDocument: TextDocument): Promise<Diagnostic[]> {
 	// In this simple example we get the settings for every validate run.
 	const settings = await getDocumentSettings(textDocument.uri);
 
-	// The validator creates diagnostics for all uppercase words length 2 and more
 	const text = textDocument.getText();
-	const pattern = /\b[A-Z]{2,}\b/g;
-	let m: RegExpExecArray | null;
-
 	let problems = 0;
 	const diagnostics: Diagnostic[] = [];
+
+	// 1. Try to parse the YAML and report any parsing errors
+	const parseResult = parseYamlContent(text, textDocument.uri);
+	if (!parseResult.success) {
+		// Create a diagnostic for the parsing error
+		// Since we don't have precise position info from the error, highlight the whole document
+		diagnostics.push({
+			severity: DiagnosticSeverity.Error,
+			range: {
+				start: textDocument.positionAt(0),
+				end: textDocument.positionAt(text.length),
+			},
+			message: `${parseResult.error}`,
+			source: parseResult.phase,
+		});
+		// Return early - no point in further validation if we can't parse
+		return diagnostics;
+	}
+
+	// 2. The validator creates diagnostics for all uppercase words length 2 and more
+	const pattern = /\b[A-Z]{2,}\b/g;
+	let m: RegExpExecArray | null;
 	while ((m = pattern.exec(text)) && problems < settings.maxNumberOfProblems) {
 		problems++;
 		const diagnostic: Diagnostic = {
@@ -397,7 +474,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<Diagnos
 		diagnostics.push(diagnostic);
 	}
 
-	// 2. Check for undefined variables in ${...}
+	// 3. Check for undefined variables in ${...}
 	const varPattern = /\${(.*?)}/g;
 	while ((m = varPattern.exec(text)) && problems < settings.maxNumberOfProblems) {
 		const varExpr = m[1].trim();
