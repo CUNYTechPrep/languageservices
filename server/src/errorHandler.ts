@@ -1,3 +1,5 @@
+import { ERROR_CONFIG } from './constants';
+
 /**
  * Custom error class for LLM-related errors
  */
@@ -31,9 +33,9 @@ export class LLMError extends Error {
 	 * Check if this error is retryable
 	 */
 	isRetryable(): boolean {
-		const retryableCodes = ['408', '429', '502', '503', '504'];
 		return (
-			retryableCodes.includes(this.code) || (this.statusCode ? this.statusCode >= 500 : false)
+			(ERROR_CONFIG.RETRYABLE_STATUS_CODES as readonly string[]).includes(this.code) ||
+			(this.statusCode ? this.statusCode >= ERROR_CONFIG.SERVER_ERROR_MIN_CODE : false)
 		);
 	}
 

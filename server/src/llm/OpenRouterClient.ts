@@ -1,5 +1,6 @@
 import { LLMError, getErrorMessage, isNetworkError } from '../errorHandler';
 import { logErrorToFile, logResponseToFile } from '../logger';
+import { LOGGING_CONFIG } from '../constants';
 
 export interface OpenRouterRequest {
 	model: string;
@@ -177,7 +178,7 @@ export class OpenRouterClient {
 
 		// Return the first user message, truncated if necessary
 		const firstUserMessage = userMessages[0].content;
-		const maxLength = 500;
+		const maxLength = LOGGING_CONFIG.MAX_DEBUG_CHARS;
 
 		if (firstUserMessage.length <= maxLength) {
 			return firstUserMessage;

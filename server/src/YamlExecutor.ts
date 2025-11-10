@@ -7,13 +7,7 @@ import {
 	WorkflowStep,
 	isWorkflowStep,
 } from './types';
-
-// Configuration constants
-const RETRY_CONFIG = {
-	MAX_RETRIES: 3,
-	BASE_DELAY_MS: 1000,
-	STEP_DELAY_MS: 2000,
-};
+import { RETRY_CONFIG, MODEL_CONFIG, JSON_INDENT } from './constants';
 
 // Utility function to sleep/wait
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -91,8 +85,8 @@ export class YamlExecutor {
 				${yamlScript}
 			`;
 			const request: OpenRouterRequest = {
-				model: 'deepseek/deepseek-chat-v3-0324:free',
-				models: ['shisa-ai/shisa-v2-llama3.3-70b:free', 'qwen/qwen3-32b:free'],
+				model: MODEL_CONFIG.YAML_EXECUTOR_PRIMARY,
+				models: [...MODEL_CONFIG.YAML_EXECUTOR_FALLBACKS],
 				messages: [{ role: 'user', content: prompt }],
 			};
 
@@ -158,15 +152,15 @@ export class YamlExecutor {
 				const prompt = `
                     You are executing a single step from a YAML workflow. Execute the step below and produce only the requested deliverable (no explanations).
                     Step (${stepName}):
-                    ${JSON.stringify(stepData, null, 2)}
+                    ${JSON.stringify(stepData, null, JSON_INDENT)}
                     Context - outputs from previous steps:
-                    ${JSON.stringify(outputs, null, 2)}
+                    ${JSON.stringify(outputs, null, JSON_INDENT)}
                     Follow the step's intent and produce the deliverable described.
                 `;
 
 				const request: OpenRouterRequest = {
-					model: 'deepseek/deepseek-chat-v3.1:free',
-					models: ['qwen/qwen3-coder:free', 'deepseek/deepseek-r1-0528-qwen3-8b:free'],
+					model: MODEL_CONFIG.WORKFLOW_STEP_PRIMARY,
+					models: [...MODEL_CONFIG.WORKFLOW_STEP_FALLBACKS],
 					messages: [{ role: 'user', content: prompt }],
 				};
 

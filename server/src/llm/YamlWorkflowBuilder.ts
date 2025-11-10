@@ -1,6 +1,7 @@
 import openRouterClient, { OpenRouterRequest } from './OpenRouterClient';
 import { parseYamlFromCodeBlockRegex, parseJsonFromCodeBlockRegex } from './utils';
 import { LLMError, YAMLProcessingError, getErrorMessage } from '../errorHandler';
+import { MODEL_CONFIG, LOGGING_CONFIG } from '../constants';
 
 /**
  * Result type for YAML script generation
@@ -50,8 +51,8 @@ export class YamlWorkflowBuilder {
 		`;
 
 		const request: OpenRouterRequest = {
-			model: 'deepseek/deepseek-chat-v3.1:free',
-			models: ['qwen/qwen3-coder:free', 'deepseek/deepseek-r1-0528-qwen3-8b:free'],
+			model: MODEL_CONFIG.YAML_BUILDER_PRIMARY,
+			models: [...MODEL_CONFIG.YAML_BUILDER_FALLBACKS],
 			messages: [{ role: 'user', content: metaPrompt }],
 		};
 
@@ -134,8 +135,8 @@ export class YamlWorkflowBuilder {
 			`;
 
 			const request: OpenRouterRequest = {
-				model: 'deepseek/deepseek-chat-v3.1:free',
-				models: ['qwen/qwen3-coder:free', 'deepseek/deepseek-r1-0528-qwen3-8b:free'],
+				model: MODEL_CONFIG.YAML_BUILDER_PRIMARY,
+				models: [...MODEL_CONFIG.YAML_BUILDER_FALLBACKS],
 				messages: [{ role: 'user', content: metaPrompt }],
 			};
 
@@ -156,7 +157,10 @@ export class YamlWorkflowBuilder {
 				// Log the error details for debugging
 				const errorMsg = getErrorMessage(parseError);
 				console.error('JSON parsing failed:', errorMsg);
-				console.error('Attempted to parse:', jsonText.substring(0, 500)); // First 500 chars
+				console.error(
+					'Attempted to parse:',
+					jsonText.substring(0, LOGGING_CONFIG.MAX_DEBUG_CHARS)
+				);
 
 				// Fallback: attempt to extract YAML only
 				const yamlOnly = parseYamlFromCodeBlockRegex(content);
@@ -257,8 +261,8 @@ export class YamlWorkflowBuilder {
 				${userPrompt}
 			`;
 			const request: OpenRouterRequest = {
-				model: 'deepseek/deepseek-chat-v3.1:free',
-				models: ['qwen/qwen3-coder:free', 'deepseek/deepseek-r1-0528-qwen3-8b:free'],
+				model: MODEL_CONFIG.YAML_BUILDER_PRIMARY,
+				models: [...MODEL_CONFIG.YAML_BUILDER_FALLBACKS],
 				messages: [{ role: 'user', content: metaPrompt }],
 			};
 
@@ -277,7 +281,10 @@ export class YamlWorkflowBuilder {
 			} catch (parseError) {
 				const errorMsg = getErrorMessage(parseError);
 				console.error('JSON parsing failed in refineYamlScript:', errorMsg);
-				console.error('Attempted to parse:', jsonText.substring(0, 500)); // First 500 chars
+				console.error(
+					'Attempted to parse:',
+					jsonText.substring(0, LOGGING_CONFIG.MAX_DEBUG_CHARS)
+				);
 
 				const yamlOnly = parseYamlFromCodeBlockRegex(content);
 				if (!yamlOnly || yamlOnly.trim().length === 0) {

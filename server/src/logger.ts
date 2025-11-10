@@ -1,12 +1,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { LOGGING_CONFIG } from './constants';
 
 // Define the directory and file path for logs
 const LOG_DIR = path.join(process.cwd(), 'logs');
 const LOG_PATH = path.join(LOG_DIR, 'llm_logs.jsonl');
 
 // Maximum number of logs to keep in the file
-const MAX_LOGS = 50;
+const MAX_LOGS = LOGGING_CONFIG.MAX_LOGS;
 
 // Define the structure of the log entry
 interface LLMLog {
@@ -17,6 +18,29 @@ interface LLMLog {
 	error?: string;
 	response?: string;
 	tokenUsage?: number;
+}
+
+// Define the structure for error JSON passed to logErrorToFile
+interface ErrorLogData {
+	model?: string;
+	message?: string;
+	code?: string;
+	statusCode?: number;
+}
+
+// Define the structure for response JSON passed to logResponseToFile
+interface ResponseLogData {
+	model?: string;
+	usage?: {
+		total_tokens?: number;
+		prompt_tokens?: number;
+		completion_tokens?: number;
+	};
+	choices?: {
+		message?: {
+			content?: string;
+		};
+	}[];
 }
 
 // CircularLogger class to manage log entries
@@ -84,7 +108,7 @@ class CircularLogger {
 
 export const logger = new CircularLogger();
 
-export function logErrorToFile(prompt: string, errorJson: any) {
+export function logErrorToFile(prompt: string, errorJson: ErrorLogData): void {
 	// Create a log entry
 	const logEntry: LLMLog = {
 		status: 'error',
@@ -97,16 +121,16 @@ export function logErrorToFile(prompt: string, errorJson: any) {
 
 	logger.log(logEntry);
 }
-export function logResponseToFile(prompt: string, responseJson: any) {
+export function logResponseToFile(prompt: string, responseJson: ResponseLogData): void {
 	// Convert error and response to JSON strings
-	const tokenUsage = parseInt(responseJson.usage.total_tokens || '0');
+	const tokenUsage = parseInt(String(responseJson.usage?.total_tokens || '0'));
 	// Create a log entry
 	const logEntry: LLMLog = {
 		status: 'success',
 		timestamp: new Date().toUTCString(),
 		model: responseJson.model || 'unknown model',
 		prompt,
-		response: responseJson?.choices[0]?.message?.content || 'unknown response',
+		response: responseJson?.choices?.[0]?.message?.content || 'unknown response',
 		tokenUsage: tokenUsage,
 	};
 	logger.log(logEntry);
