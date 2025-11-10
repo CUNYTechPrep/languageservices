@@ -125,7 +125,7 @@ connection.onRequest('prompt.refine', async (params: { uri: string }) => {
 	}
 });
 
-connection.onRequest('prompt.getScript', async (params: { uri: string }) => {
+connection.onRequest('script.getScript', async (params: { uri: string }) => {
 	try {
 		const doc = documents.get(params.uri);
 		if (!doc) {
