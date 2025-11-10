@@ -1,86 +1,239 @@
-# YAML LSP for Domain-Specific Language (VS Code LSP)
+# AI-Powered YAML Workflow Language Server
 
-A modern, extensible Language Server Protocol (LSP) implementation for VS Code, supporting YAML,
-variable interpolation, file/module includes, and LLM-powered features.
+A sophisticated Language Server Protocol (LSP) implementation that transforms natural language into
+executable YAML workflows using Large Language Models (LLMs). This VS Code extension enables
+intelligent YAML authoring, validation, and execution with LLM-powered assistance.
 
-## Features
+## 🚀 Key Features
 
-- **YAML & Plain Text Support**: Language features for YAML and plaintext files.
-- **Completions**: Context-aware code completion for YAML keywords and custom schema.
-- **Diagnostics**: Real-time diagnostics for uppercase words, undefined variables, and more.
-- **Variable Interpolation**: Jinja2-style `${var}` variable replacement using `.vars.yaml` files.
-- **File Includes**: Import YAML files as modules using `include` directives.
-- **LLM Integration**: Send prompts and data to LLMs (OpenRouter, DeepSeek, etc.) for code analysis,
-  correction, and feedback.
-- **Schema Keyword Extraction**: Extract and compare YAML schema keywords with your document.
-- **End-to-End Tests**: Automated tests for both client and server.
+### LLM-Powered Workflow Generation
 
-## Project Structure
+- **Natural Language to YAML**: Convert plain English descriptions into structured YAML workflows
+- **Intelligent Script Refinement**: Iteratively improve YAML scripts based on user feedback
+- **Multi-Step Execution**: Execute workflows with context-aware step chaining
+- **Schema Generation**: Automatically generate JSON schemas for your YAML workflows
 
-```
-.
-├── client/                  # VS Code Language Client
-│   ├── src/
-│   │   ├── extension.ts     # Client entry point
-│   │   └── test/            # End-to-end tests
-│   └── ...
-├── server/                  # Language Server
-│   ├── src/
-│   │   ├── server.ts        # Main LSP server
-│   │   ├── include.ts       # Include/module logic for YAML
-│   │   ├── logger.ts        # Logging utilities
-│   │   ├── errorHandler.ts  # LLM and server error handling
-│   │   └── expressions/     # Variable resolution and interpolation
-│   └── ...
-├── package.json             # Monorepo manifest
-├── README.md                # This file
-└── ...
-```
+### Advanced YAML Capabilities
 
-## Getting Started
+- **Variable Interpolation**: Use `${variable}` syntax with `.vars.yaml` files for dynamic content
+- **File Includes**: Modular YAML composition with secure file inclusion
+- **Real-Time Validation**: Immediate diagnostics for syntax errors, undefined variables, and
+  structure issues
 
-1. **Install dependencies**
-   ```sh
+## 📋 Prerequisites
+
+- **VS Code**: Version 1.75.0 or higher
+- **Node.js**: Version 16 or higher
+- **OpenRouter API Key**: Required for LLM features
+  - Get your key from [https://openrouter.ai/keys](https://openrouter.ai/keys)
+  - Set as environment variable: `OPENROUTER_KEY=your-api-key-here`
+
+## 🛠️ Installation & Setup
+
+1. **Clone and Install**
+
+   ```bash
+   git clone https://github.com/CUNYTechPrep/languageservices
+   cd languageservices
    npm install
    ```
-2. **Build the project**
-   ```sh
+
+2. **Set API Key**
+
+   ```bash
+   # Linux/macOS
+   export OPENROUTER_KEY="your-api-key-here"
+
+   # Windows PowerShell
+   $env:OPENROUTER_KEY="your-api-key-here"
+
+   # Or add to .bashrc/.zshrc for persistence
+   echo 'export OPENROUTER_KEY="your-api-key-here"' >> ~/.bashrc
+   ```
+
+3. **Build the Project**
+
+   ```bash
    npm run compile
    ```
-   Or start in watch mode:
-   ```sh
-   npm run watch
+
+4. **Launch Development**
+   - Open the project in VS Code
+   - Press `F5` to launch the Extension Development Host
+   - Open a `.yaml` file to activate the extension
+
+## 📖 Usage
+
+### 1. Generate YAML Workflow from Natural Language
+
+Write your requirements in plain text and generate a structured workflow:
+
+1. Create a new file with your requirements (e.g., `prompt.yaml`)
+2. Write something like:
    ```
-3. **Open in VS Code**
-   - Open this folder in VS Code.
-   - Press `F5` to launch the Extension Development Host.
+   Create a workout routine generator that:
+   1. Takes user fitness level as input
+   2. Generates 5 exercises with reps and sets
+   3. Provides form tips for each exercise
+   ```
+3. Run command: **LSP: Generate Yaml Script**
+4. View the generated YAML workflow and schema in the diff viewer
 
-## Usage
+### 2. Refine Existing YAML Workflows
 
-- Open a YAML or plaintext file.
-- Use completions for keywords like `prompt`, `data`, `include`, etc.
-- Add variables in a `.vars.yaml` file at the workspace root. Use `${var}` in your YAML to reference
-  them.
-- Use `include: somefile.yaml` to import YAML modules.
-- Use the extension's commands or UI to send prompts/data to the LLM for feedback or correction.
+Improve your YAML scripts with AI assistance:
 
-## Advanced
+1. Open an existing YAML file
+2. Run command: **LSP: Refine Yaml Script**
+3. Enter your refinement instruction (e.g., "Add error handling" or "Include validation steps")
+4. Review the improved workflow in the diff viewer
 
-- **Schema Keyword Extraction**: Use the `llm-schema.extractKeywords` request to compare your YAML
-  with a schema.
-- **LLM Feedback**: Use the `llm-feedback.insertComment` request to get LLM-powered comments or
-  corrections.
-- **Custom Includes**: Extend `server/src/include.ts` to support new file types or module behaviors.
+### 3. Test YAML Workflows
 
-## Testing
+Execute your workflow and see results:
 
-- Run all tests:
-  ```sh
-  cd client && npm test
-  cd ../server && npm test
-  ```
+1. Open a YAML workflow file with `steps` array
+2. Run command: **LSP: Test Yaml Script**
+3. View execution results for each step in the interactive test results panel
 
-## Contributing
+### 4. Variable Interpolation
 
-Contributions are welcome! Please open issues or pull requests for improvements, bug fixes, or new
-features.
+Create dynamic YAML using variables:
+
+1. Create `.vars.yaml` in your workspace root:
+
+   ```yaml
+   userName: John Doe
+   apiEndpoint: https://api.example.com
+   timeout: 5000
+   ```
+
+2. Use variables in your YAML:
+
+   ```yaml
+   steps:
+     - name: FetchData
+       url: ${apiEndpoint}/users
+       timeout: ${timeout}
+       user: ${userName}
+   ```
+
+3. Variables are resolved automatically during validation and execution
+
+### 5. File Includes
+
+Organize workflows into reusable modules:
+
+1. Create a shared configuration file (`config.yaml`):
+
+   ```yaml
+   retries: 3
+   timeout: 5000
+   logLevel: info
+   ```
+
+2. Include it in your workflow:
+   ```yaml
+   config:
+     include: config.yaml # replaces with included file
+   steps:
+     - name: ProcessData
+   ```
+
+## 📁 Project Structure
+
+```
+lsp/
+├── client/                    # VS Code Extension (Language Client)
+│   ├── src/
+│   │   ├── extension.ts       # Extension entry point & commands
+│   │   ├── WebviewProvider.ts # Diff viewer for YAML comparison
+│   │   ├── TestResultsWebviewProvider.ts  # Test results display
+│   │   └── test/              # End-to-end integration tests
+│   └── media/                 # CSS & JS for webviews
+│
+├── server/                    # Language Server
+│   ├── src/
+│   │   ├── server.ts          # LSP server & request handlers
+│   │   ├── constants.ts       # Configuration constants
+│   │   ├── types.ts           # TypeScript type definitions
+│   │   ├── errorHandler.ts    # Structured error handling
+│   │   ├── logger.ts          # Circular logging for LLM calls
+│   │   ├── include.ts         # File inclusion with security
+│   │   ├── YamlExecutor.ts    # Workflow execution engine
+│   │   │
+│   │   ├── expressions/       # Variable resolution
+│   │   │   ├── resolve.ts     # Variable interpolation
+│   │   │   └── utils.ts       # Expression parsing utilities
+│   │   │
+│   │   ├── llm/              # LLM Integration
+│   │   │   ├── OpenRouterClient.ts    # OpenRouter API client
+│   │   │   ├── YamlWorkflowBuilder.ts # YAML generation & refinement
+│   │   │   └── utils.ts       # Code block parsing
+│   │   │
+│   │   └── test/             # Unit tests
+│   │       ├── expressions.test.ts
+│   │       ├── include.test.ts
+│   │       └── llm-utils.test.ts
+│   │
+├── package.json              # Extension manifest & configuration
+├── tsconfig.json            # TypeScript configuration
+└── README.md               # This file
+```
+
+## 🧪 Testing
+
+Run the comprehensive test suite:
+
+```bash
+# Run all tests
+npm test
+
+# Run client integration tests
+npm run test:client
+
+# Run server unit tests
+npm run test:server
+
+# Watch mode for development
+npm run watch
+```
+
+## 🤝 Contributing
+
+Contributions are welcome! Areas for improvement:
+
+1. **Additional LLM Providers**: Support for OpenAI, Anthropic, Ollama, etc.
+2. **Workflow Templates**: Pre-built templates for common use cases
+3. **Timeout Handling**: Add request timeout configuration
+4. **Dynamic Model Selection**: Runtime model configuration
+
+## 📝 Building from Source
+
+```bash
+# Install dependencies
+npm install
+
+# Compile TypeScript
+npm run compile
+
+# Watch for changes
+npm run watch
+
+# Format code
+npm run format
+
+# Lint code
+npm run lint
+npm run lint:fix
+```
+
+## 🙏 Acknowledgments
+
+- Built on
+  [VS Code Language Server Extension Guide](https://code.visualstudio.com/api/language-extensions/language-server-extension-guide)
+- Powered by [OpenRouter](https://openrouter.ai/) for LLM integration
+
+---
+
+**Made with ❤️ for AI-powered development**

@@ -1,8 +1,25 @@
 import openRouterClient, { OpenRouterRequest } from './OpenRouterClient';
 import { parseYamlFromCodeBlockRegex, parseJsonFromCodeBlockRegex } from './utils';
+import { LLMError, YAMLProcessingError, getErrorMessage } from '../errorHandler';
+import { MODEL_CONFIG, LOGGING_CONFIG } from '../constants';
+
+/**
+ * Result type for YAML script generation
+ */
+interface YamlScriptResult {
+	yaml: string;
+	schema: Record<string, unknown>;
+}
 
 export class YamlWorkflowBuilder {
+	/**
+	 * Refine a user prompt to improve clarity and completeness
+	 */
 	async refinePrompt(userPrompt: string): Promise<string> {
+		if (!userPrompt || userPrompt.trim().length === 0) {
+			throw new YAMLProcessingError('Cannot refine empty prompt');
+		}
+
 		const metaPrompt = `
 			You are a prompt engineering specialist focused on iteratively improving raw prompts.
 			Your task is to refine and enhance user prompts, 
@@ -34,16 +51,36 @@ export class YamlWorkflowBuilder {
 		`;
 
 		const request: OpenRouterRequest = {
-			model: 'deepseek/deepseek-chat-v3-0324:free',
-			models: ['shisa-ai/shisa-v2-llama3.3-70b:free', 'qwen/qwen3-32b:free'],
+			model: MODEL_CONFIG.YAML_BUILDER_PRIMARY,
+			models: [...MODEL_CONFIG.YAML_BUILDER_FALLBACKS],
 			messages: [{ role: 'user', content: metaPrompt }],
 		};
 
-		const response = await openRouterClient.callAPI('chat/completions', request);
-		return response.choices[0].message?.content || '';
+		try {
+			const response = await openRouterClient.callAPI('chat/completions', request);
+			const refinedPrompt = response.choices[0].message?.content || '';
+
+			if (!refinedPrompt || refinedPrompt.trim().length === 0) {
+				throw new YAMLProcessingError('LLM returned empty refined prompt');
+			}
+
+			return refinedPrompt;
+		} catch (error) {
+			if (error instanceof LLMError || error instanceof YAMLProcessingError) {
+				throw error;
+			}
+			const message = getErrorMessage(error);
+			throw new YAMLProcessingError(`Failed to refine prompt: ${message}`, error as Error);
+		}
 	}
 
-	async createYamlScript(prompt: string): Promise<{ yaml: string; schema: any }> {
+	/**
+	 * Create a YAML script from a natural language prompt
+	 */
+	async createYamlScript(prompt: string): Promise<YamlScriptResult> {
+		if (!prompt || prompt.trim().length === 0) {
+			throw new YAMLProcessingError('Cannot create YAML script from empty prompt');
+		}
 		try {
 			const metaPrompt = `
 				You are an AI system that converts natural-language prompts into executable pseudo-code written in **YAML**.  
@@ -98,43 +135,74 @@ export class YamlWorkflowBuilder {
 			`;
 
 			const request: OpenRouterRequest = {
-				model: 'deepseek/deepseek-chat-v3.1:free',
-				models: ['qwen/qwen3-coder:free', 'deepseek/deepseek-r1-0528-qwen3-8b:free'],
+				model: MODEL_CONFIG.YAML_BUILDER_PRIMARY,
+				models: [...MODEL_CONFIG.YAML_BUILDER_FALLBACKS],
 				messages: [{ role: 'user', content: metaPrompt }],
 			};
 
 			const response = await openRouterClient.callAPI('chat/completions', request);
 			const content = response.choices[0].message?.content || '';
 
+			if (!content || content.trim().length === 0) {
+				throw new YAMLProcessingError('LLM returned empty response');
+			}
+
 			// Extract the JSON object from the response
 			const jsonText = parseJsonFromCodeBlockRegex(content);
-			let parsed: any = {};
+			let parsed: { yaml?: string; schema?: Record<string, unknown> };
+
 			try {
 				parsed = JSON.parse(jsonText);
-			} catch (err) {
-				console.log('Failed to parse JSON from model response:', err);
+			} catch (parseError) {
+				// Log the error details for debugging
+				const errorMsg = getErrorMessage(parseError);
+				console.error('JSON parsing failed:', errorMsg);
+				console.error(
+					'Attempted to parse:',
+					jsonText.substring(0, LOGGING_CONFIG.MAX_DEBUG_CHARS)
+				);
+
 				// Fallback: attempt to extract YAML only
 				const yamlOnly = parseYamlFromCodeBlockRegex(content);
+				if (!yamlOnly || yamlOnly.trim().length === 0) {
+					throw new YAMLProcessingError(
+						`Failed to parse LLM response as JSON (${errorMsg}) and could not extract YAML`
+					);
+				}
 				return { yaml: yamlOnly, schema: {} };
 			}
 
 			const yaml = typeof parsed.yaml === 'string' ? parsed.yaml : '';
 			const schema = parsed.schema || {};
-
-			console.log('Created YAML:', yaml);
-			console.log('Created Schema:', schema);
+			if (!yaml || yaml.trim().length === 0) {
+				throw new YAMLProcessingError('LLM response did not contain valid YAML content');
+			}
 
 			return { yaml, schema };
 		} catch (error) {
-			console.log(error);
-			return { yaml: '', schema: {} };
+			if (error instanceof LLMError || error instanceof YAMLProcessingError) {
+				throw error;
+			}
+			const message = getErrorMessage(error);
+			throw new YAMLProcessingError(
+				`Failed to create YAML script: ${message}`,
+				error as Error
+			);
 		}
 	}
 
-	async refineYamlScript(
-		yamlScript: string,
-		userPrompt: string
-	): Promise<{ yaml: string; schema: any }> {
+	/**
+	 * Refine an existing YAML script based on user feedback
+	 */
+	async refineYamlScript(yamlScript: string, userPrompt: string): Promise<YamlScriptResult> {
+		if (!yamlScript || yamlScript.trim().length === 0) {
+			throw new YAMLProcessingError('Cannot refine empty YAML script');
+		}
+
+		if (!userPrompt || userPrompt.trim().length === 0) {
+			throw new YAMLProcessingError('Refinement instruction cannot be empty');
+		}
+
 		try {
 			const metaPrompt = `
 				You are an expert YAML workflow engineer and meta-prompting specialist.  
@@ -193,35 +261,56 @@ export class YamlWorkflowBuilder {
 				${userPrompt}
 			`;
 			const request: OpenRouterRequest = {
-				model: 'deepseek/deepseek-chat-v3-0324:free',
-				models: ['shisa-ai/shisa-v2-llama3.3-70b:free', 'qwen/qwen3-32b:free'],
+				model: MODEL_CONFIG.YAML_BUILDER_PRIMARY,
+				models: [...MODEL_CONFIG.YAML_BUILDER_FALLBACKS],
 				messages: [{ role: 'user', content: metaPrompt }],
 			};
 
 			const response = await openRouterClient.callAPI('chat/completions', request);
 			const content = response.choices[0].message?.content || '';
-			console.log('Raw refine response:', content);
+
+			if (!content || content.trim().length === 0) {
+				throw new YAMLProcessingError('LLM returned empty response');
+			}
 
 			const jsonText = parseJsonFromCodeBlockRegex(content);
-			let parsed: any = {};
+			let parsed: { yaml?: string; schema?: Record<string, unknown> };
+
 			try {
 				parsed = JSON.parse(jsonText);
-			} catch (err) {
-				console.log('Failed to parse JSON from refine response:', err);
+			} catch (parseError) {
+				const errorMsg = getErrorMessage(parseError);
+				console.error('JSON parsing failed in refineYamlScript:', errorMsg);
+				console.error(
+					'Attempted to parse:',
+					jsonText.substring(0, LOGGING_CONFIG.MAX_DEBUG_CHARS)
+				);
+
 				const yamlOnly = parseYamlFromCodeBlockRegex(content);
+				if (!yamlOnly || yamlOnly.trim().length === 0) {
+					throw new YAMLProcessingError(
+						`Failed to parse LLM response as JSON (${errorMsg}) and could not extract YAML`
+					);
+				}
 				return { yaml: yamlOnly, schema: {} };
 			}
 
 			const yaml = typeof parsed.yaml === 'string' ? parsed.yaml : '';
 			const schema = parsed.schema || {};
-
-			console.log('Refined YAML:', yaml);
-			console.log('Refined Schema:', schema);
+			if (!yaml || yaml.trim().length === 0) {
+				throw new YAMLProcessingError('LLM response did not contain valid YAML content');
+			}
 
 			return { yaml, schema };
 		} catch (error) {
-			console.log(error);
-			return { yaml: '', schema: {} };
+			if (error instanceof LLMError || error instanceof YAMLProcessingError) {
+				throw error;
+			}
+			const message = getErrorMessage(error);
+			throw new YAMLProcessingError(
+				`Failed to refine YAML script: ${message}`,
+				error as Error
+			);
 		}
 	}
 }

@@ -1,40 +1,59 @@
 import openRouterClient, { OpenRouterRequest } from './llm/OpenRouterClient';
 import { parse } from 'yaml';
+import { LLMError, YAMLProcessingError, getErrorMessage } from './errorHandler';
+import {
+	YamlWorkflowDocument,
+	WorkflowExecutionResult,
+	WorkflowStep,
+	isWorkflowStep,
+} from './types';
+import { RETRY_CONFIG, MODEL_CONFIG, JSON_INDENT } from './constants';
 
 // Utility function to sleep/wait
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Exponential backoff retry wrapper
-async function callWithRetry(
-	fn: () => Promise<any>,
-	maxRetries = 3,
-	baseDelay = 1000
-): Promise<any> {
+async function callWithRetry<T>(
+	fn: () => Promise<T>,
+	maxRetries = RETRY_CONFIG.MAX_RETRIES,
+	baseDelay = RETRY_CONFIG.BASE_DELAY_MS
+): Promise<T> {
 	for (let attempt = 0; attempt <= maxRetries; attempt++) {
 		try {
 			return await fn();
-		} catch (error: any) {
+		} catch (error: unknown) {
+			// Check if this is a rate limit error using LLMError methods
 			const isRateLimitError =
-				error?.message?.includes('too quickly') ||
-				error?.message?.includes('rate limit') ||
-				error?.message?.includes('429');
+				error instanceof LLMError
+					? error.isRateLimitError()
+					: (error as Error)?.message?.includes('too quickly') ||
+						(error as Error)?.message?.includes('rate limit') ||
+						(error as Error)?.message?.includes('429');
 
+			// If it's not a rate limit error or we're out of retries, throw
 			if (!isRateLimitError || attempt === maxRetries) {
 				throw error;
 			}
 
 			// Exponential backoff: 1s, 2s, 4s, 8s...
 			const delay = baseDelay * Math.pow(2, attempt);
-			console.log(
+			// This is informational logging for retry logic, console is acceptable here
+			console.info(
 				`Rate limit hit. Retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})...`
 			);
 			await sleep(delay);
 		}
 	}
+	// TypeScript exhaustiveness check - should never reach here
+	throw new Error('Retry logic exhausted without throwing');
 }
 
 export class YamlExecutor {
 	async mockTestYamlScript(yamlScript: string): Promise<string> {
+		if (!yamlScript || yamlScript.trim().length === 0) {
+			throw new YAMLProcessingError('Cannot execute empty YAML script');
+		}
+
 		try {
 			const prompt = `
 				You are a YAML DSL interpreter that executes YAML scripts written in a domain-specific workflow language.  
@@ -66,8 +85,8 @@ export class YamlExecutor {
 				${yamlScript}
 			`;
 			const request: OpenRouterRequest = {
-				model: 'deepseek/deepseek-chat-v3-0324:free',
-				models: ['shisa-ai/shisa-v2-llama3.3-70b:free', 'qwen/qwen3-32b:free'],
+				model: MODEL_CONFIG.YAML_EXECUTOR_PRIMARY,
+				models: [...MODEL_CONFIG.YAML_EXECUTOR_FALLBACKS],
 				messages: [{ role: 'user', content: prompt }],
 			};
 
@@ -77,52 +96,71 @@ export class YamlExecutor {
 			});
 
 			const content = response.choices[0].message?.content || '';
-			console.log(content);
+
+			if (!content || content.trim().length === 0) {
+				throw new YAMLProcessingError('LLM returned empty response for YAML execution');
+			}
+
 			return content;
 		} catch (error) {
-			console.log(error);
-			return '';
+			if (error instanceof LLMError || error instanceof YAMLProcessingError) {
+				throw error;
+			}
+			const message = getErrorMessage(error);
+			throw new YAMLProcessingError(
+				`Failed to execute YAML script: ${message}`,
+				error as Error
+			);
 		}
 	}
 
 	async testYamlWithPromptChaining(yamlScript: string): Promise<Record<string, string>> {
+		if (!yamlScript || yamlScript.trim().length === 0) {
+			throw new YAMLProcessingError('Cannot test empty YAML script');
+		}
+
 		try {
-			const doc = parse(yamlScript) as any;
+			const doc = parse(yamlScript) as YamlWorkflowDocument;
 
 			if (!doc || !doc.steps || !Array.isArray(doc.steps)) {
-				throw new Error('YAML must include a top-level `steps` array');
+				throw new YAMLProcessingError('YAML must include a top-level `steps` array');
 			}
 
-			const outputs: Record<string, string> = {};
+			const outputs: WorkflowExecutionResult = {};
+
 			// Accumulate a simple context object to pass previous outputs
 			for (let i = 0; i < doc.steps.length; i++) {
-				const step = doc.steps[i];
-				const stepName = step?.Step || step?.name || `step-${i + 1}`;
+				const stepData: WorkflowStep = doc.steps[i];
 
-				console.log(`Executing step: ${stepName}`);
-				console.log('Step details:', JSON.stringify(step, null, 2));
-				console.log('Current outputs:', JSON.stringify(outputs, null, 2));
+				// Validate step structure
+				if (!isWorkflowStep(stepData)) {
+					throw new YAMLProcessingError(`Invalid step structure at index ${i}`);
+				}
+
+				const stepName = stepData.Step || stepData.name || `step-${i + 1}`;
+
+				// Info logging for workflow execution progress
+				console.info(`Executing step: ${stepName}`);
 
 				// Add delay between steps to avoid rate limiting (except for first step)
 				if (i > 0) {
-					const delayMs = 2000; // 2 second delay between steps
-					console.log(`Waiting ${delayMs}ms before next request...`);
-					await sleep(delayMs);
+					console.info(`Waiting ${RETRY_CONFIG.STEP_DELAY_MS}ms before next request...`);
+					await sleep(RETRY_CONFIG.STEP_DELAY_MS);
 				}
 
 				// Build a prompt for this step, including previous outputs as context
 				const prompt = `
                     You are executing a single step from a YAML workflow. Execute the step below and produce only the requested deliverable (no explanations).
                     Step (${stepName}):
-                    ${JSON.stringify(step, null, 2)}
+                    ${JSON.stringify(stepData, null, JSON_INDENT)}
                     Context - outputs from previous steps:
-                    ${JSON.stringify(outputs, null, 2)}
+                    ${JSON.stringify(outputs, null, JSON_INDENT)}
                     Follow the step's intent and produce the deliverable described.
                 `;
 
 				const request: OpenRouterRequest = {
-					model: 'deepseek/deepseek-chat-v3.1:free',
-					models: ['qwen/qwen3-coder:free', 'deepseek/deepseek-r1-0528-qwen3-8b:free'],
+					model: MODEL_CONFIG.WORKFLOW_STEP_PRIMARY,
+					models: [...MODEL_CONFIG.WORKFLOW_STEP_FALLBACKS],
 					messages: [{ role: 'user', content: prompt }],
 				};
 
@@ -133,16 +171,23 @@ export class YamlExecutor {
 
 				const content = response.choices[0].message?.content || '';
 
-				// Log the output for now as requested
-				console.log(`Step output (${stepName}):`, content);
+				if (!content || content.trim().length === 0) {
+					throw new YAMLProcessingError(`Step "${stepName}" returned empty output`);
+				}
 
 				outputs[stepName] = content;
 			}
 
 			return outputs;
 		} catch (error) {
-			console.log('Error executing YAML prompt chain:', error);
-			throw error;
+			if (error instanceof LLMError || error instanceof YAMLProcessingError) {
+				throw error;
+			}
+			const message = getErrorMessage(error);
+			throw new YAMLProcessingError(
+				`Error executing YAML prompt chain: ${message}`,
+				error as Error
+			);
 		}
 	}
 }

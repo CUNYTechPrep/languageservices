@@ -1,9 +1,11 @@
-import { LLMError, handleLLMError } from '../errorHandler';
+import { LLMError, getErrorMessage, isNetworkError } from '../errorHandler';
+import { logErrorToFile, logResponseToFile } from '../logger';
+import { LOGGING_CONFIG } from '../constants';
 
 export interface OpenRouterRequest {
 	model: string;
 	messages: {
-		role: 'user' | 'system';
+		role: 'user' | 'system' | 'assistant';
 		content: string;
 	}[];
 	models?: string[];
@@ -14,6 +16,8 @@ export interface OpenRouterRequest {
 }
 
 export interface OpenRouterResponse {
+	id?: string;
+	model?: string;
 	choices: {
 		message?: {
 			role: string;
@@ -24,6 +28,11 @@ export interface OpenRouterResponse {
 			code: string;
 		};
 	}[];
+	usage?: {
+		prompt_tokens?: number;
+		completion_tokens?: number;
+		total_tokens?: number;
+	};
 }
 
 export class OpenRouterClient {
@@ -35,11 +44,18 @@ export class OpenRouterClient {
 		this.apiUrl = process.env.OPENROUTER_URL || 'https://openrouter.ai/api/v1';
 
 		if (!this.apiKey) {
-			console.warn('OpenRouter API key is not configured');
+			throw new Error(
+				'OpenRouter API key is not configured. Please set OPENROUTER_KEY environment variable.'
+			);
 		}
 	}
 
+	/**
+	 * Call the OpenRouter API with proper error handling and logging
+	 */
 	async callAPI(endpoint: string, request: OpenRouterRequest): Promise<OpenRouterResponse> {
+		const promptText = this.extractPromptFromRequest(request);
+
 		try {
 			const response = await fetch(`${this.apiUrl}/${endpoint}`, {
 				method: 'POST',
@@ -50,32 +66,125 @@ export class OpenRouterClient {
 				body: JSON.stringify(request),
 			});
 
+			const statusCode = response.status;
+
 			if (!response.ok) {
-				const error = (await response.json()) as {
-					error: { message: string; code: string };
-				};
-				throw new LLMError(error.error.code, error.error.message);
+				let errorData: { error: { message: string; code: string } };
+				try {
+					errorData = (await response.json()) as {
+						error: { message: string; code: string };
+					};
+				} catch {
+					// If JSON parsing fails, create a generic error
+					throw new LLMError(
+						String(statusCode),
+						`HTTP ${statusCode}: ${response.statusText}`,
+						statusCode
+					);
+				}
+
+				const llmError = new LLMError(
+					errorData.error.code || String(statusCode),
+					errorData.error.message || response.statusText,
+					statusCode
+				);
+
+				// Log the error
+				logErrorToFile(promptText, {
+					model: request.model,
+					message: llmError.message,
+					code: llmError.code,
+					statusCode: statusCode,
+				});
+
+				throw llmError;
 			}
 
 			const data = (await response.json()) as OpenRouterResponse;
 
-			// In case OpenRouter returns embedded error in choices
+			// Check for embedded error in choices
 			if (data.choices?.[0]?.error) {
 				const err = data.choices[0].error;
-				throw new LLMError(err.code, err.message);
+				const llmError = new LLMError(err.code, err.message);
+
+				logErrorToFile(promptText, {
+					model: request.model,
+					message: err.message,
+					code: err.code,
+				});
+
+				throw llmError;
 			}
+
+			// Log successful response
+			logResponseToFile(promptText, {
+				model: data.model || request.model,
+				choices: data.choices,
+				usage: data.usage,
+			});
 
 			return data;
 		} catch (error) {
+			// If it's already an LLMError, re-throw it
 			if (error instanceof LLMError) {
-				// Normalize error using LLM handler
-				const parsedError = handleLLMError(error);
-				console.error('OpenRouter API Error:', parsedError);
-				throw new Error(parsedError);
+				throw error;
 			}
-			console.error('Error calling OpenRouter API:', error);
-			throw new Error('Unknown error occurred while calling OpenRouter API');
+
+			// Handle network errors
+			if (isNetworkError(error)) {
+				const networkError = new LLMError(
+					'NETWORK_ERROR',
+					'Network error: Unable to reach OpenRouter API. Please check your internet connection.',
+					0,
+					error
+				);
+
+				logErrorToFile(promptText, {
+					model: request.model,
+					message: networkError.message,
+					code: 'NETWORK_ERROR',
+				});
+
+				throw networkError;
+			}
+
+			// Handle unexpected errors
+			const message = getErrorMessage(error);
+			const unexpectedError = new LLMError(
+				'UNEXPECTED_ERROR',
+				`Unexpected error: ${message}`,
+				0,
+				error
+			);
+
+			logErrorToFile(promptText, {
+				model: request.model,
+				message: unexpectedError.message,
+				code: 'UNEXPECTED_ERROR',
+			});
+
+			throw unexpectedError;
 		}
+	}
+
+	/**
+	 * Extract a representative prompt text for logging
+	 */
+	private extractPromptFromRequest(request: OpenRouterRequest): string {
+		const userMessages = request.messages.filter(m => m.role === 'user');
+		if (userMessages.length === 0) {
+			return '[No user messages]';
+		}
+
+		// Return the first user message, truncated if necessary
+		const firstUserMessage = userMessages[0].content;
+		const maxLength = LOGGING_CONFIG.MAX_DEBUG_CHARS;
+
+		if (firstUserMessage.length <= maxLength) {
+			return firstUserMessage;
+		}
+
+		return firstUserMessage.substring(0, maxLength) + '... [truncated]';
 	}
 }
 
