@@ -71,7 +71,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "postinstall": "cd client && npm install && cd ../server && npm install && cd ..",
-    "test": "sh ./scripts/e2e.sh"
+    "test:client": "sh ./scripts/e2e.sh",
+    "test:server": "cd server && mocha --ui tdd 'out/test/**/*.test.js' && cd .."
   },
   "devDependencies": {
     "@eslint/js": "^9.13.0",
