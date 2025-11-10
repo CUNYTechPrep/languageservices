@@ -36,7 +36,30 @@ export function validateStaticContent(node: any) {
 }
 
 export function loadAndValidateIncludedContent(filepath: string, baseDir: string): any {
-	const fullPath = path.resolve(url.fileURLToPath(baseDir), filepath);
+	// Resolve the workspace root directory
+	const workspaceRoot = path.resolve(url.fileURLToPath(baseDir));
+	
+	// Resolve the absolute path of the requested file
+	const fullPath = path.resolve(workspaceRoot, filepath);
+	
+	// Normalize paths to prevent path traversal attacks
+	const normalizedWorkspaceRoot = path.normalize(workspaceRoot);
+	const normalizedFullPath = path.normalize(fullPath);
+	
+	// Security check: ensure the file is within the workspace directory
+	if (!normalizedFullPath.startsWith(normalizedWorkspaceRoot + path.sep) && 
+	    normalizedFullPath !== normalizedWorkspaceRoot) {
+		throw new Error(
+			`Security violation: Cannot include files outside the workspace. ` +
+			`Attempted to access: ${filepath}`
+		);
+	}
+	
+	// Check if file exists
+	if (!fs.existsSync(fullPath)) {
+		throw new Error(`Include file not found: ${filepath}`);
+	}
+	
 	const fileExtension = path.extname(fullPath).toLowerCase();
 	const fileContent = fs.readFileSync(fullPath, 'utf8');
 	if (fileExtension === '.yaml') {
